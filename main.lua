@@ -215,55 +215,78 @@ end
 
 local PianoDetector = {}
 
-function PianoDetector.isBlueColor(color)
-    -- 青系の色を検出（B成分が最も高い）
-    return color.B > 0.4 and color.B > color.R and color.B > color.G
-end
-
-function PianoDetector.findAllPianos()
-    local pianos = {}
-    local checkedModels = {}
+function PianoDetector.findYamaRolanSioPiano()
+    local foundPiano = nil
     
-    print("[Libra Heart] Searching for pianos...")
+    print("[Libra Heart] Searching for YamaRolanSio piano...")
     
     Utils.safeCall(function()
-        -- Workspaceの全Modelを検索
+        -- Workspaceの全オブジェクトを検索
         for _, obj in ipairs(Workspace:GetDescendants()) do
-            if obj:IsA("Model") and not checkedModels[obj] then
-                checkedModels[obj] = true
+            -- YamaRolanSioのピアノを名前で検索
+            if obj:IsA("Model") then
+                local modelName = obj.Name:lower()
                 
-                local hasBlueKeys = false
-                local keyCount = 0
-                
-                -- Modelの中に青いパーツがあるか確認
-                for _, child in ipairs(obj:GetDescendants()) do
-                    if child:IsA("BasePart") then
-                        local name = child.Name
-                        
-                        -- キー名をチェック
-                        for _, keyName in ipairs(CONSTANTS.KEY_NAMES) do
-                            if name == keyName or name:match("^" .. keyName .. "%d*$") then
-                                if PianoDetector.isBlueColor(child.Color) then
-                                    hasBlueKeys = true
-                                    keyCount = keyCount + 1
+                -- ピアノに関連する名前をチェック
+                if modelName:find("piano") or modelName:find("yamarolansi") or modelName:find("keyboard") then
+                    print("[Libra Heart] Found potential piano model:", obj.Name)
+                    
+                    -- 中にキーがあるか確認
+                    local hasKeys = false
+                    for _, child in ipairs(obj:GetDescendants()) do
+                        if child:IsA("BasePart") then
+                            for _, keyName in ipairs(CONSTANTS.KEY_NAMES) do
+                                if child.Name == keyName then
+                                    hasKeys = true
+                                    print("[Libra Heart] Confirmed: Found key", keyName, "in", obj.Name)
+                                    foundPiano = obj
+                                    return
                                 end
-                                break
                             end
                         end
                     end
                 end
-                
-                -- 少なくとも5つの青いキーがあればピアノと判定
-                if hasBlueKeys and keyCount >= 5 then
-                    print("[Libra Heart] Found piano:", obj.Name, "with", keyCount, "keys")
-                    table.insert(pianos, obj)
+            end
+            
+            -- パーツの名前がキー名と一致する場合、その親を探す
+            if obj:IsA("BasePart") then
+                for _, keyName in ipairs(CONSTANTS.KEY_NAMES) do
+                    if obj.Name == keyName then
+                        print("[Libra Heart] Found key part:", keyName)
+                        
+                        -- 親のModelを探す
+                        local parent = obj.Parent
+                        while parent and parent ~= Workspace do
+                            if parent:IsA("Model") then
+                                print("[Libra Heart] Found parent model:", parent.Name)
+                                foundPiano = parent
+                                return
+                            end
+                            parent = parent.Parent
+                        end
+                    end
                 end
             end
         end
     end)
     
-    print("[Libra Heart] Total pianos found:", #pianos)
-    return pianos
+    if foundPiano then
+        print("[Libra Heart] Piano found:", foundPiano.Name)
+    else
+        print("[Libra Heart] No piano found")
+    end
+    
+    return foundPiano
+end
+
+function PianoDetector.findAllPianos()
+    local piano = PianoDetector.findYamaRolanSioPiano()
+    
+    if piano then
+        return {piano}
+    else
+        return {}
+    end
 end
 
 function PianoDetector.getPianoKeys(pianoModel)
@@ -273,19 +296,26 @@ function PianoDetector.getPianoKeys(pianoModel)
         return keys
     end
     
+    print("[Libra Heart] Getting keys from:", pianoModel.Name)
+    
     Utils.safeCall(function()
         for _, obj in ipairs(pianoModel:GetDescendants()) do
             if obj:IsA("BasePart") then
                 local name = obj.Name
                 
-                -- キー名にマッチするか確認
+                -- 正確なキー名マッチング
                 for _, keyName in ipairs(CONSTANTS.KEY_NAMES) do
-                    if name == keyName or name:match("^" .. keyName .. "%d*$") then
-                        -- 青い色かチェック
-                        if PianoDetector.isBlueColor(obj.Color) then
-                            if not keys[keyName] then
-                                keys[keyName] = obj
-                                print("[Libra Heart] Found key:", keyName, "Color:", obj.Color)
+                    if name == keyName then
+                        if not keys[keyName] then
+                            keys[keyName] = obj
+                            print("[Libra Heart] Found key:", keyName, "at", obj:GetFullName())
+                            
+                            -- ClickDetectorまたはProximityPromptがあるか確認
+                            local hasInteraction = obj:FindFirstChildOfClass("ClickDetector") or obj:FindFirstChildOfClass("ProximityPrompt")
+                            if hasInteraction then
+                                print("[Libra Heart] Key has interaction:", keyName)
+                            else
+                                print("[Libra Heart] WARNING: Key has no interaction:", keyName)
                             end
                         end
                         break
@@ -296,7 +326,10 @@ function PianoDetector.getPianoKeys(pianoModel)
     end)
     
     local keyCount = 0
-    for _ in pairs(keys) do keyCount = keyCount + 1 end
+    for k, v in pairs(keys) do 
+        keyCount = keyCount + 1
+        print("[Libra Heart] Key registered:", k)
+    end
     print("[Libra Heart] Total keys found:", keyCount)
     
     return keys
