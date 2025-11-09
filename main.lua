@@ -1,23 +1,23 @@
 --[[
-    Auto Piano Player with Push Effect
-    Created for Roblox
+    Auto Piano Clicker with Rayfield GUI
+    For YamaRolanSio Piano Toy
     
     Features:
-    - Automatic piano melody playback
-    - Push effect around piano keys
-    - Rayfield GUI controls
-    - Customizable settings
+    - Automatic piano key clicking
+    - Camera auto-focus on keys
+    - Multiple song support
+    - Customizable timing
 ]]
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-   Name = "🎹 Auto Piano Player",
-   LoadingTitle = "Piano System Loading...",
-   LoadingSubtitle = "by Your Name",
+   Name = "🎹 Auto Piano Clicker",
+   LoadingTitle = "Piano Clicker Loading...",
+   LoadingSubtitle = "by YourName",
    ConfigurationSaving = {
       Enabled = true,
-      FolderName = "AutoPianoConfig",
+      FolderName = "AutoPianoClickerConfig",
       FileName = "PianoSettings"
    },
    Discord = {
@@ -28,28 +28,47 @@ local Window = Rayfield:CreateWindow({
    KeySystem = false
 })
 
--- Variables
-local PianoKeysFolder = workspace:FindFirstChild("Piano") and workspace.Piano:FindFirstChild("Keys")
+-- Services
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local VirtualUser = game:GetService("VirtualUser")
 local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
 
--- Settings
+-- Variables
 local Settings = {
     AutoPlayEnabled = false,
-    PushEnabled = true,
-    PushRadius = 12,
-    PushStrength = 70,
-    PushDuration = 0.35,
+    AutoFocusCamera = true,
+    ClickDelay = 0.05,
     NoteGap = 0.04,
-    LoopDelay = 0.8,
-    CurrentSong = 1
+    LoopDelay = 1,
+    CurrentSong = 1,
+    CameraDistance = 8,
+    CameraHeight = 3
+}
+
+-- Piano key mapping (common piano toy layout)
+local KeyMapping = {
+    ["C4"] = "C",
+    ["D4"] = "D", 
+    ["E4"] = "E",
+    ["F4"] = "F",
+    ["G4"] = "G",
+    ["A4"] = "A",
+    ["B4"] = "B",
+    ["C5"] = "C5",
+    ["D5"] = "D5",
+    ["E5"] = "E5",
+    ["F5"] = "F5",
+    ["G5"] = "G5",
+    ["A5"] = "A5",
+    ["B5"] = "B5"
 }
 
 -- Songs Library
 local Songs = {
     {
-        Name = "Twinkle Twinkle Little Star",
+        Name = "きらきら星 (Twinkle Star)",
         Sequence = {
             {"C4", 0.4}, {"C4", 0.4}, {"G4", 0.4}, {"G4", 0.4},
             {"A4", 0.4}, {"A4", 0.4}, {"G4", 0.8},
@@ -58,7 +77,7 @@ local Songs = {
         }
     },
     {
-        Name = "Mary Had a Little Lamb",
+        Name = "メリーさんの羊 (Mary's Lamb)",
         Sequence = {
             {"E4", 0.4}, {"D4", 0.4}, {"C4", 0.4}, {"D4", 0.4},
             {"E4", 0.4}, {"E4", 0.4}, {"E4", 0.8},
@@ -67,7 +86,7 @@ local Songs = {
         }
     },
     {
-        Name = "Happy Birthday",
+        Name = "ハッピーバースデー (Happy Birthday)",
         Sequence = {
             {"C4", 0.3}, {"C4", 0.3}, {"D4", 0.6}, {"C4", 0.6},
             {"F4", 0.6}, {"E4", 1.2},
@@ -76,91 +95,128 @@ local Songs = {
         }
     },
     {
-        Name = "Custom Song (Edit in Script)",
+        Name = "かえるの歌 (Frog Song)",
         Sequence = {
-            {"E4", 0.4}, {"D4", 0.4}, {"C4", 0.8}, {"D4", 0.4},
-            {"E4", 0.4}, {"E4", 0.8}, {"rest", 0.2},
-            {"E4", 0.4}, {"D4", 0.4}, {"C4", 0.8}
+            {"C4", 0.4}, {"D4", 0.4}, {"E4", 0.4}, {"F4", 0.4},
+            {"E4", 0.4}, {"D4", 0.4}, {"C4", 0.8},
+            {"E4", 0.4}, {"F4", 0.4}, {"G4", 0.4}, {"A4", 0.4},
+            {"G4", 0.4}, {"F4", 0.4}, {"E4", 0.8}
+        }
+    },
+    {
+        Name = "ドレミの歌 (Do-Re-Mi)",
+        Sequence = {
+            {"C4", 0.4}, {"D4", 0.4}, {"E4", 0.4}, {"C4", 0.4},
+            {"E4", 0.4}, {"C4", 0.4}, {"E4", 0.8},
+            {"D4", 0.4}, {"E4", 0.4}, {"F4", 0.4}, {"F4", 0.4},
+            {"E4", 0.4}, {"D4", 0.4}, {"F4", 0.8}
         }
     }
 }
 
--- Helper Functions
-local function getKeyPart(noteName)
-    if not PianoKeysFolder then
-        PianoKeysFolder = workspace:FindFirstChild("Piano") and workspace.Piano:FindFirstChild("Keys")
+-- Helper: Find piano in workspace
+local function findPiano()
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj.Name:find("YamaRolanSio") then
+            return obj
+        end
+        -- Also check for "Piano" models
+        if obj:IsA("Model") and (obj.Name:lower():find("piano") or obj.Name:find("Sio")) then
+            return obj
+        end
     end
-    return PianoKeysFolder and PianoKeysFolder:FindFirstChild(noteName)
+    return nil
 end
 
-local function playNoteAndPush(noteName, velocityMultiplier)
-    local keyPart = getKeyPart(noteName)
-    if not keyPart then
-        return
-    end
-
-    -- Play sound
-    local sound = keyPart:FindFirstChildOfClass("Sound")
-    if sound then
-        sound:Play()
-    end
-
-    if not Settings.PushEnabled then return end
-
-    -- Push players
-    local origin = keyPart.Position
-    for _, player in ipairs(Players:GetPlayers()) do
-        local char = player.Character
-        if char and char.PrimaryPart then
-            local root = char.PrimaryPart
-            local dist = (root.Position - origin).Magnitude
-            if dist <= Settings.PushRadius then
-                local upVel = Vector3.new(
-                    (math.random()-0.5)*6,
-                    1 + (velocityMultiplier or 1),
-                    (math.random()-0.5)*6
-                ) * Settings.PushStrength
-                
-                local bv = Instance.new("BodyVelocity")
-                bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-                bv.Velocity = upVel
-                bv.P = 1000
-                bv.Parent = root
-                
-                task.delay(Settings.PushDuration, function()
-                    if bv and bv.Parent then 
-                        bv:Destroy() 
-                    end
-                end)
+-- Helper: Find key part by note name
+local function findKeyPart(piano, noteName)
+    if not piano then return nil end
+    
+    local keyName = KeyMapping[noteName] or noteName
+    
+    -- Search in piano descendants
+    for _, obj in ipairs(piano:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            -- Check if name matches
+            if obj.Name == keyName or obj.Name:find(keyName) then
+                return obj
             end
         end
     end
+    
+    return nil
+end
 
-    -- Push physics objects
-    for _, part in ipairs(workspace:GetDescendants()) do
-        if part:IsA("BasePart") and not part.Anchored and part ~= keyPart then
-            if (part.Position - origin).Magnitude <= Settings.PushRadius then
-                if typeof(part.AssemblyLinearVelocity) == "Vector3" then
-                    part.AssemblyLinearVelocity = part.AssemblyLinearVelocity + 
-                        Vector3.new(
-                            (math.random()-0.5)*6,
-                            1 + (velocityMultiplier or 1),
-                            (math.random()-0.5)*6
-                        ) * (Settings.PushStrength * 0.15)
-                end
-            end
+-- Helper: Click a piano key
+local function clickKey(keyPart)
+    if not keyPart then return false end
+    
+    -- Find ClickDetector
+    local clickDetector = keyPart:FindFirstChildOfClass("ClickDetector")
+    if clickDetector then
+        -- Fire the click
+        fireclickdetector(clickDetector)
+        return true
+    end
+    
+    -- Alternative: Try to find in children
+    for _, child in ipairs(keyPart:GetDescendants()) do
+        if child:IsA("ClickDetector") then
+            fireclickdetector(child)
+            return true
         end
     end
+    
+    return false
+end
+
+-- Helper: Focus camera on key
+local function focusCameraOnKey(keyPart)
+    if not keyPart or not Settings.AutoFocusCamera then return end
+    
+    local targetPos = keyPart.Position
+    local offset = Vector3.new(0, Settings.CameraHeight, Settings.CameraDistance)
+    
+    Camera.CameraType = Enum.CameraType.Scriptable
+    Camera.CFrame = CFrame.new(targetPos + offset, targetPos)
+end
+
+-- Helper: Reset camera
+local function resetCamera()
+    Camera.CameraType = Enum.CameraType.Custom
 end
 
 -- Auto play coroutine
 local autoPlayThread = nil
+local currentPiano = nil
+
 local function startAutoPlay()
     if autoPlayThread then
         task.cancel(autoPlayThread)
     end
     
     autoPlayThread = task.spawn(function()
+        -- Find piano first
+        currentPiano = findPiano()
+        
+        if not currentPiano then
+            Rayfield:Notify({
+               Title = "❌ Piano Not Found",
+               Content = "Cannot find YamaRolanSio piano in workspace!",
+               Duration = 5,
+               Image = 4483362458
+            })
+            Settings.AutoPlayEnabled = false
+            return
+        end
+        
+        Rayfield:Notify({
+           Title = "✅ Piano Found",
+           Content = "Starting auto play...",
+           Duration = 3,
+           Image = 4483362458
+        })
+        
         while Settings.AutoPlayEnabled do
             local currentSong = Songs[Settings.CurrentSong]
             if currentSong then
@@ -169,12 +225,26 @@ local function startAutoPlay()
                     
                     local note = noteInfo[1]
                     local dur = noteInfo[2] or 0.4
-                    local velMult = noteInfo[3] or 1
                     
                     if note ~= "rest" then
-                        pcall(function()
-                            playNoteAndPush(note, velMult)
-                        end)
+                        local keyPart = findKeyPart(currentPiano, note)
+                        
+                        if keyPart then
+                            -- Focus camera on key
+                            if Settings.AutoFocusCamera then
+                                focusCameraOnKey(keyPart)
+                            end
+                            
+                            -- Click the key
+                            task.wait(Settings.ClickDelay)
+                            local success = clickKey(keyPart)
+                            
+                            if not success then
+                                warn("Failed to click key:", note)
+                            end
+                        else
+                            warn("Key not found:", note)
+                        end
                     end
                     
                     task.wait(math.max(dur, Settings.NoteGap))
@@ -182,36 +252,39 @@ local function startAutoPlay()
             end
             task.wait(Settings.LoopDelay)
         end
+        
+        -- Reset camera when done
+        if Settings.AutoFocusCamera then
+            resetCamera()
+        end
     end)
 end
 
 -- GUI Creation
 local MainTab = Window:CreateTab("🎵 Main Controls", 4483362458)
 local SettingsTab = Window:CreateTab("⚙️ Settings", 4483362458)
+local InfoTab = Window:CreateTab("ℹ️ Info", 4483362458)
 
 -- Main Controls
 local PlaybackSection = MainTab:CreateSection("Playback Controls")
 
 local AutoPlayToggle = MainTab:CreateToggle({
-   Name = "Auto Play Piano",
+   Name = "🎹 Auto Play Piano",
    CurrentValue = false,
    Flag = "AutoPlayToggle",
    Callback = function(Value)
        Settings.AutoPlayEnabled = Value
        if Value then
            startAutoPlay()
-           Rayfield:Notify({
-              Title = "Auto Play Started",
-              Content = "Piano is now playing automatically!",
-              Duration = 3,
-              Image = 4483362458
-           })
        else
            if autoPlayThread then
                task.cancel(autoPlayThread)
            end
+           if Settings.AutoFocusCamera then
+               resetCamera()
+           end
            Rayfield:Notify({
-              Title = "Auto Play Stopped",
+              Title = "⏸️ Auto Play Stopped",
               Content = "Piano playback stopped.",
               Duration = 3,
               Image = 4483362458
@@ -222,16 +295,22 @@ local AutoPlayToggle = MainTab:CreateToggle({
 
 local SongDropdown = MainTab:CreateDropdown({
    Name = "Select Song",
-   Options = {"Twinkle Twinkle", "Mary Had a Lamb", "Happy Birthday", "Custom Song"},
-   CurrentOption = {"Twinkle Twinkle"},
+   Options = {
+       "きらきら星 (Twinkle Star)",
+       "メリーさんの羊 (Mary's Lamb)", 
+       "ハッピーバースデー (Happy Birthday)",
+       "かえるの歌 (Frog Song)",
+       "ドレミの歌 (Do-Re-Mi)"
+   },
+   CurrentOption = {"きらきら星 (Twinkle Star)"},
    MultipleOptions = false,
    Flag = "SongDropdown",
    Callback = function(Option)
        for i, song in ipairs(Songs) do
-           if song.Name:find(Option[1]) then
+           if song.Name == Option[1] then
                Settings.CurrentSong = i
                Rayfield:Notify({
-                  Title = "Song Changed",
+                  Title = "🎵 Song Changed",
                   Content = "Now playing: " .. song.Name,
                   Duration = 3,
                   Image = 4483362458
@@ -242,61 +321,76 @@ local SongDropdown = MainTab:CreateDropdown({
    end
 })
 
-local PushSection = MainTab:CreateSection("Push Effect")
+local CameraSection = MainTab:CreateSection("Camera Controls")
 
-local PushToggle = MainTab:CreateToggle({
-   Name = "Enable Push Effect",
+local AutoFocusToggle = MainTab:CreateToggle({
+   Name = "📹 Auto Focus Camera",
    CurrentValue = true,
-   Flag = "PushToggle",
+   Flag = "AutoFocusToggle",
    Callback = function(Value)
-       Settings.PushEnabled = Value
+       Settings.AutoFocusCamera = Value
+       if not Value then
+           resetCamera()
+       end
+   end
+})
+
+local ManualButtons = MainTab:CreateSection("Manual Controls")
+
+local FindPianoButton = MainTab:CreateButton({
+   Name = "🔍 Find Piano",
+   Callback = function()
+       local piano = findPiano()
+       if piano then
+           Rayfield:Notify({
+              Title = "✅ Piano Found!",
+              Content = "Found: " .. piano.Name,
+              Duration = 4,
+              Image = 4483362458
+           })
+           currentPiano = piano
+       else
+           Rayfield:Notify({
+              Title = "❌ Piano Not Found",
+              Content = "Make sure YamaRolanSio piano is in workspace",
+              Duration = 5,
+              Image = 4483362458
+           })
+       end
+   end
+})
+
+local ResetCameraButton = MainTab:CreateButton({
+   Name = "🔄 Reset Camera",
+   Callback = function()
+       resetCamera()
+       Rayfield:Notify({
+          Title = "📹 Camera Reset",
+          Content = "Camera returned to normal",
+          Duration = 2,
+          Image = 4483362458
+       })
    end
 })
 
 -- Settings Tab
-local PushSettingsSection = SettingsTab:CreateSection("Push Settings")
-
-local RadiusSlider = SettingsTab:CreateSlider({
-   Name = "Push Radius",
-   Range = {5, 30},
-   Increment = 1,
-   Suffix = " studs",
-   CurrentValue = 12,
-   Flag = "RadiusSlider",
-   Callback = function(Value)
-       Settings.PushRadius = Value
-   end
-})
-
-local StrengthSlider = SettingsTab:CreateSlider({
-   Name = "Push Strength",
-   Range = {20, 150},
-   Increment = 5,
-   Suffix = " power",
-   CurrentValue = 70,
-   Flag = "StrengthSlider",
-   Callback = function(Value)
-       Settings.PushStrength = Value
-   end
-})
-
-local DurationSlider = SettingsTab:CreateSlider({
-   Name = "Push Duration",
-   Range = {0.1, 1},
-   Increment = 0.05,
-   Suffix = "s",
-   CurrentValue = 0.35,
-   Flag = "DurationSlider",
-   Callback = function(Value)
-       Settings.PushDuration = Value
-   end
-})
-
 local TimingSection = SettingsTab:CreateSection("Timing Settings")
+
+local ClickDelaySlider = SettingsTab:CreateSlider({
+   Name = "Click Delay",
+   Range = {0.01, 0.2},
+   Increment = 0.01,
+   Suffix = "s",
+   CurrentValue = 0.05,
+   Flag = "ClickDelaySlider",
+   Callback = function(Value)
+       Settings.ClickDelay = Value
+   end
+})
 
 local NoteGapSlider = SettingsTab:CreateSlider({
    Name = "Note Gap",
-   Range = {0.01, 0.2},
+   Range = {0.01, 0.3},
    Increment = 0.01,
    Suffix = "s",
    CurrentValue = 0.04,
@@ -308,40 +402,121 @@ local NoteGapSlider = SettingsTab:CreateSlider({
 
 local LoopDelaySlider = SettingsTab:CreateSlider({
    Name = "Loop Delay",
-   Range = {0.2, 3},
+   Range = {0.5, 5},
    Increment = 0.1,
    Suffix = "s",
-   CurrentValue = 0.8,
+   CurrentValue = 1,
    Flag = "LoopDelaySlider",
    Callback = function(Value)
        Settings.LoopDelay = Value
    end
 })
 
--- Info Section
-local InfoSection = SettingsTab:CreateSection("Information")
+local CameraSettingsSection = SettingsTab:CreateSection("Camera Settings")
 
-SettingsTab:CreateLabel("Auto Piano Player v1.0")
-SettingsTab:CreateLabel("Make sure Piano model is in workspace")
+local CameraDistanceSlider = SettingsTab:CreateSlider({
+   Name = "Camera Distance",
+   Range = {3, 15},
+   Increment = 0.5,
+   Suffix = " studs",
+   CurrentValue = 8,
+   Flag = "CameraDistanceSlider",
+   Callback = function(Value)
+       Settings.CameraDistance = Value
+   end
+})
 
-local StatusButton = SettingsTab:CreateButton({
-   Name = "Check Piano Status",
+local CameraHeightSlider = SettingsTab:CreateSlider({
+   Name = "Camera Height",
+   Range = {0, 8},
+   Increment = 0.5,
+   Suffix = " studs",
+   CurrentValue = 3,
+   Flag = "CameraHeightSlider",
+   Callback = function(Value)
+       Settings.CameraHeight = Value
+   end
+})
+
+-- Info Tab
+InfoTab:CreateSection("📖 How to Use")
+
+InfoTab:CreateParagraph({
+    Title = "Step 1: Find Piano",
+    Content = "Click 'Find Piano' button to locate the YamaRolanSio piano in the game."
+})
+
+InfoTab:CreateParagraph({
+    Title = "Step 2: Select Song",
+    Content = "Choose a song from the dropdown menu. Multiple Japanese songs are available!"
+})
+
+InfoTab:CreateParagraph({
+    Title = "Step 3: Start Playing",
+    Content = "Toggle 'Auto Play Piano' to start automatic playing. The camera will focus on each key."
+})
+
+InfoTab:CreateSection("ℹ️ Information")
+
+InfoTab:CreateLabel("Auto Piano Clicker v1.0")
+InfoTab:CreateLabel("For YamaRolanSio Piano Toy")
+InfoTab:CreateLabel("")
+InfoTab:CreateLabel("Features:")
+InfoTab:CreateLabel("✓ Automatic key clicking")
+InfoTab:CreateLabel("✓ Camera auto-focus")
+InfoTab:CreateLabel("✓ Multiple songs")
+InfoTab:CreateLabel("✓ Customizable timing")
+
+InfoTab:CreateSection("⚠️ Requirements")
+
+InfoTab:CreateParagraph({
+    Title = "Game Requirements",
+    Content = "• YamaRolanSio piano must be in workspace\n• Piano keys must have ClickDetectors\n• Executor must support fireclickdetector"
+})
+
+local TestSection = InfoTab:CreateSection("🧪 Test Features")
+
+local TestClickButton = InfoTab:CreateButton({
+   Name = "Test Single Note (C4)",
    Callback = function()
-       local pianoExists = workspace:FindFirstChild("Piano") ~= nil
-       local keysExist = PianoKeysFolder ~= nil
+       if not currentPiano then
+           currentPiano = findPiano()
+       end
        
-       if pianoExists and keysExist then
-           Rayfield:Notify({
-              Title = "✅ Piano Found",
-              Content = "Piano is ready to play!",
-              Duration = 3,
-              Image = 4483362458
-           })
+       if currentPiano then
+           local keyPart = findKeyPart(currentPiano, "C4")
+           if keyPart then
+               focusCameraOnKey(keyPart)
+               task.wait(0.1)
+               local success = clickKey(keyPart)
+               if success then
+                   Rayfield:Notify({
+                      Title = "✅ Test Successful",
+                      Content = "C4 key clicked successfully!",
+                      Duration = 3,
+                      Image = 4483362458
+                   })
+               else
+                   Rayfield:Notify({
+                      Title = "❌ Test Failed",
+                      Content = "Could not click C4 key",
+                      Duration = 3,
+                      Image = 4483362458
+                   })
+               end
+           else
+               Rayfield:Notify({
+                  Title = "❌ Key Not Found",
+                  Content = "C4 key not found in piano",
+                  Duration = 3,
+                  Image = 4483362458
+               })
+           end
        else
            Rayfield:Notify({
               Title = "❌ Piano Not Found",
-              Content = "Please make sure Piano model with Keys folder exists in workspace",
-              Duration = 5,
+              Content = "Please find piano first",
+              Duration = 3,
               Image = 4483362458
            })
        end
@@ -350,10 +525,26 @@ local StatusButton = SettingsTab:CreateButton({
 
 -- Initial notification
 Rayfield:Notify({
-   Title = "🎹 Auto Piano Loaded",
-   Content = "Select a song and enable Auto Play!",
+   Title = "🎹 Auto Piano Clicker Loaded",
+   Content = "Click 'Find Piano' to get started!",
    Duration = 5,
    Image = 4483362458
 })
 
-print("Auto Piano Player loaded successfully!")
+-- Auto-find piano on load
+task.spawn(function()
+    task.wait(2)
+    local piano = findPiano()
+    if piano then
+        currentPiano = piano
+        Rayfield:Notify({
+           Title = "✅ Piano Auto-Detected",
+           Content = "Found: " .. piano.Name,
+           Duration = 4,
+           Image = 4483362458
+        })
+    end
+end)
+
+print("🎹 Auto Piano Clicker loaded successfully!")
+print("📍 Searching for YamaRolanSio piano...")
