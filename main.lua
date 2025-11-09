@@ -1,23 +1,18 @@
 --[[
     Auto Piano Player for "Fling Things and People"
-    Works with spawned blue piano toys
-    
-    Features:
-    - Finds ANY piano in the game (spawned or placed)
-    - Clicks piano keys automatically
-    - Camera auto-positioning
-    - Multiple songs
+    Libra Heart by imaizumiyui - Complete Version
+    Works with YamaRolanSio blue piano
 ]]
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-   Name = "🎹 Fling Piano Auto Player",
-   LoadingTitle = "ピアノ自動演奏読み込み中...",
-   LoadingSubtitle = "青いピアノ対応版",
+   Name = "🎹 Libra Heart Auto Piano",
+   LoadingTitle = "Libra Heart 読み込み中...",
+   LoadingSubtitle = "YamaRolanSio青ピアノ対応",
    ConfigurationSaving = {
       Enabled = true,
-      FolderName = "FlingPianoConfig",
+      FolderName = "LibraHeartConfig",
       FileName = "PianoSettings"
    },
    Discord = {
@@ -42,43 +37,77 @@ local Settings = {
     AutoFocusCamera = true,
     ClickDelay = 0.08,
     NoteGap = 0.05,
-    LoopDelay = 2,
+    LoopDelay = 3,
     CurrentSong = 1,
     TeleportToPiano = false,
-    SearchRadius = 500  -- 検索範囲を広げる
+    PlaySpeed = 1.0
 }
 
--- Songs Library
+-- Libra Heart Song Data (Complete Version)
+local LibraHeartSong = {
+    Name = "Libra Heart - imaizumiyui",
+    Intro = {
+        {"D#", 0.4}, {"F#", 0.4}, {"G#", 0.4}, {"A#", 0.4},
+        {"G#", 0.4}, {"F#", 0.4}, {"D#", 0.6}, {"rest", 0.2},
+        {"D#", 0.4}, {"F#", 0.4}, {"G#", 0.4}, {"B", 0.4},
+        {"A#", 0.4}, {"G#", 0.4}, {"F#", 0.8}
+    },
+    VerseA = {
+        {"C#", 0.3}, {"D#", 0.3}, {"F#", 0.5}, {"F#", 0.3},
+        {"G#", 0.3}, {"F#", 0.3}, {"D#", 0.5}, {"rest", 0.2},
+        {"D#", 0.3}, {"F#", 0.3}, {"G#", 0.5}, {"A#", 0.3},
+        {"B", 0.4}, {"A#", 0.4}, {"G#", 0.6}, {"rest", 0.2},
+        {"C#", 0.3}, {"D#", 0.3}, {"F#", 0.5}, {"F#", 0.3},
+        {"G#", 0.3}, {"A#", 0.3}, {"B", 0.5}, {"rest", 0.2},
+        {"B", 0.3}, {"A#", 0.3}, {"G#", 0.5}, {"F#", 0.3},
+        {"D#", 0.4}, {"F#", 0.4}, {"G#", 0.8}
+    },
+    Chorus = {
+        {"B", 0.4}, {"B", 0.3}, {"A#", 0.3}, {"G#", 0.4},
+        {"F#", 0.3}, {"G#", 0.3}, {"F#", 0.4}, {"D#", 0.4}, {"rest", 0.2},
+        {"D#", 0.3}, {"F#", 0.3}, {"G#", 0.4}, {"A#", 0.4},
+        {"B", 0.4}, {"B", 0.4}, {"A#", 0.6}, {"rest", 0.2},
+        {"B", 0.4}, {"B", 0.3}, {"C#", 0.3}, {"D#", 0.4},
+        {"F#", 0.4}, {"G#", 0.4}, {"F#", 0.4}, {"D#", 0.4}, {"rest", 0.2},
+        {"F#", 0.3}, {"G#", 0.3}, {"A#", 0.4}, {"B", 0.4},
+        {"A#", 0.4}, {"G#", 0.4}, {"F#", 0.8}
+    },
+    Bridge = {
+        {"D#", 0.4}, {"D#", 0.4}, {"F#", 0.4}, {"G#", 0.4},
+        {"A#", 0.4}, {"B", 0.4}, {"A#", 0.4}, {"G#", 0.4}, {"rest", 0.2},
+        {"F#", 0.3}, {"F#", 0.3}, {"G#", 0.4}, {"A#", 0.4},
+        {"B", 0.4}, {"C#", 0.4}, {"D#", 0.8}, {"rest", 0.3}
+    },
+    Outro = {
+        {"B", 0.4}, {"A#", 0.4}, {"G#", 0.4}, {"F#", 0.4},
+        {"G#", 0.4}, {"F#", 0.4}, {"D#", 0.6}, {"rest", 0.2},
+        {"D#", 0.4}, {"F#", 0.4}, {"G#", 0.4}, {"B", 0.4},
+        {"A#", 0.6}, {"G#", 0.6}, {"F#", 1.2}
+    }
+}
+
+-- Other Songs
 local Songs = {
+    LibraHeartSong,
     {
         Name = "きらきら星",
-        Notes = {"C", "C", "G", "G", "A", "A", "G", "F", "F", "E", "E", "D", "D", "C"},
-        Durations = {0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8}
+        Notes = {"C", "C", "G", "G", "A", "A", "G", "rest", "F", "F", "E", "E", "D", "D", "C", "rest"},
+        Durations = {0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8, 0.2, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8, 0.2}
     },
     {
         Name = "メリーさんの羊",
-        Notes = {"E", "D", "C", "D", "E", "E", "E", "D", "D", "D", "E", "G", "G"},
-        Durations = {0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8, 0.4, 0.4, 0.8, 0.4, 0.4, 0.8}
+        Notes = {"E", "D", "C", "D", "E", "E", "E", "rest", "D", "D", "D", "rest", "E", "G", "G", "rest"},
+        Durations = {0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8, 0.2, 0.4, 0.4, 0.8, 0.2, 0.4, 0.4, 0.8, 0.2}
     },
     {
         Name = "ハッピーバースデー",
-        Notes = {"C", "C", "D", "C", "F", "E", "C", "C", "D", "C", "G", "F"},
-        Durations = {0.3, 0.3, 0.6, 0.6, 0.6, 1.2, 0.3, 0.3, 0.6, 0.6, 0.6, 1.2}
+        Notes = {"C", "C", "D", "C", "F", "E", "rest", "C", "C", "D", "C", "G", "F", "rest"},
+        Durations = {0.3, 0.3, 0.6, 0.6, 0.6, 1.2, 0.3, 0.3, 0.3, 0.6, 0.6, 0.6, 1.2, 0.3}
     },
     {
         Name = "かえるの歌",
-        Notes = {"C", "D", "E", "F", "E", "D", "C", "E", "F", "G", "A", "G", "F", "E"},
-        Durations = {0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8}
-    },
-    {
-        Name = "ドレミの歌",
-        Notes = {"C", "D", "E", "C", "E", "C", "E", "D", "E", "F", "F", "E", "D", "F"},
-        Durations = {0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8}
-    },
-    {
-        Name = "チューリップ",
-        Notes = {"C", "D", "E", "C", "E", "F", "E", "D", "C", "E", "G", "G", "E", "D", "C"},
-        Durations = {0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8}
+        Notes = {"C", "D", "E", "F", "E", "D", "C", "rest", "E", "F", "G", "A", "G", "F", "E", "rest"},
+        Durations = {0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8, 0.2, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8, 0.2}
     }
 }
 
@@ -87,70 +116,67 @@ local pianoKeys = {}
 local autoPlayThread = nil
 local foundPianos = {}
 
--- Helper: 全てのピアノを検索（広範囲）
+-- Helper: 全てのピアノを検索
 local function findAllPianos()
     local pianos = {}
+    
+    print("[Libra Heart] Searching for pianos...")
     
     -- Workspace全体を検索
     for _, obj in ipairs(Workspace:GetDescendants()) do
         if obj:IsA("Model") then
             local name = obj.Name:lower()
             
-            -- ピアノに関連する名前をチェック
+            -- YamaRolanSioピアノまたはピアノ関連の名前をチェック
             if name:find("piano") or name:find("yamaha") or name:find("keyboard") or 
-               name:find("roland") or name:find("sio") then
+               name:find("roland") or name:find("sio") or name:find("yamarolansi") then
                 
-                -- 青色のパーツがあるか確認
-                local hasBlueKeys = false
+                -- キーがあるか確認
                 local hasKeys = false
+                local keyCount = 0
                 
                 for _, part in ipairs(obj:GetDescendants()) do
                     if part:IsA("BasePart") then
-                        -- 青色チェック
-                        if part.Color == Color3.fromRGB(0, 0, 255) or 
-                           part.Color == Color3.fromRGB(13, 105, 172) or
-                           part.BrickColor == BrickColor.new("Really blue") or
-                           part.BrickColor == BrickColor.new("Bright blue") then
-                            hasBlueKeys = true
-                        end
-                        
-                        -- 鍵盤名チェック
-                        if part.Name == "C" or part.Name == "D" or part.Name == "E" or
-                           part.Name == "F" or part.Name == "G" or part.Name == "A" or
-                           part.Name == "B" or part.Name:find("Key") or part.Name:find("Button") then
+                        local partName = part.Name
+                        -- 音符名チェック
+                        if partName == "C" or partName == "D" or partName == "E" or
+                           partName == "F" or partName == "G" or partName == "A" or
+                           partName == "B" or partName == "C#" or partName == "D#" or
+                           partName == "F#" or partName == "G#" or partName == "A#" then
                             hasKeys = true
+                            keyCount = keyCount + 1
                         end
                     end
                 end
                 
-                if hasKeys or hasBlueKeys then
+                if hasKeys and keyCount >= 5 then
+                    print("[Libra Heart] Found piano:", obj.Name, "with", keyCount, "keys")
                     table.insert(pianos, obj)
                 end
             end
         end
     end
     
-    -- 青いパーツが集まっている場所を検索（ピアノの可能性）
+    -- 青いパーツでキー名を持つものを検索
     for _, obj in ipairs(Workspace:GetDescendants()) do
         if obj:IsA("BasePart") then
-            local color = obj.Color
-            if (color == Color3.fromRGB(0, 0, 255) or 
-                color == Color3.fromRGB(13, 105, 172) or
-                obj.BrickColor == BrickColor.new("Really blue") or
-                obj.BrickColor == BrickColor.new("Bright blue")) and
-               (obj.Name == "C" or obj.Name == "D" or obj.Name == "E" or 
-                obj.Name == "F" or obj.Name == "G" or obj.Name == "A" or 
-                obj.Name == "B") then
+            local name = obj.Name
+            if (name == "C" or name == "D" or name == "E" or 
+                name == "F" or name == "G" or name == "A" or 
+                name == "B" or name == "C#" or name == "D#" or
+                name == "F#" or name == "G#" or name == "A#") then
                 
                 -- 親モデルを取得
                 local parent = obj.Parent
                 if parent and parent:IsA("Model") and not table.find(pianos, parent) then
+                    print("[Libra Heart] Found piano via key part:", parent.Name)
                     table.insert(pianos, parent)
                 end
             end
         end
     end
     
+    print("[Libra Heart] Total pianos found:", #pianos)
     return pianos
 end
 
@@ -160,31 +186,28 @@ local function getPianoKeys(pianoModel)
     
     if not pianoModel then return keys end
     
+    print("[Libra Heart] Getting keys from:", pianoModel.Name)
+    
     -- 全ての子孫を検索
     for _, obj in ipairs(pianoModel:GetDescendants()) do
         if obj:IsA("BasePart") then
             local name = obj.Name
             
-            -- 音符名のパターンマッチング
-            if name == "C" or name == "D" or name == "E" or name == "F" or 
-               name == "G" or name == "A" or name == "B" then
+            -- 音符名の完全一致
+            if name == "C" or name == "C#" or name == "D" or name == "D#" or 
+               name == "E" or name == "F" or name == "F#" or name == "G" or 
+               name == "G#" or name == "A" or name == "A#" or name == "B" then
                 keys[name] = obj
-            elseif name:match("^[CDEFGAB]$") then
-                local noteName = name:match("^([CDEFGAB])")
-                keys[noteName] = obj
-            elseif name:find("Key") and (name:find("C") or name:find("D") or 
-                   name:find("E") or name:find("F") or name:find("G") or 
-                   name:find("A") or name:find("B")) then
-                -- "KeyC", "CKey" などの形式
-                for _, note in ipairs({"C", "D", "E", "F", "G", "A", "B"}) do
-                    if name:find(note) then
-                        keys[note] = obj
-                        break
-                    end
-                end
+                print("[Libra Heart] Found key:", name)
             end
         end
     end
+    
+    local keyCount = 0
+    for k, v in pairs(keys) do 
+        keyCount = keyCount + 1
+    end
+    print("[Libra Heart] Total keys found:", keyCount)
     
     return keys
 end
@@ -230,18 +253,6 @@ local function clickPianoKey(keyPart)
         return true
     end
     
-    -- マウスクリックシミュレーション
-    pcall(function()
-        local camera = Workspace.CurrentCamera
-        local screenPoint, onScreen = camera:WorldToScreenPoint(keyPart.Position)
-        
-        if onScreen then
-            VirtualInputManager:SendMouseButtonEvent(screenPoint.X, screenPoint.Y, 0, true, game, 0)
-            task.wait(0.05)
-            VirtualInputManager:SendMouseButtonEvent(screenPoint.X, screenPoint.Y, 0, false, game, 0)
-        end
-    end)
-    
     return true
 end
 
@@ -272,6 +283,58 @@ local function teleportToPiano(pianoModel)
     end)
 end
 
+-- Helper: 曲のセクションを演奏
+local function playSection(section)
+    for i, noteData in ipairs(section) do
+        if not Settings.AutoPlayEnabled then break end
+        
+        local noteName = noteData[1]
+        local duration = noteData[2] * (1 / Settings.PlaySpeed)
+        
+        if noteName ~= "rest" then
+            local keyPart = pianoKeys[noteName]
+            
+            if keyPart then
+                if Settings.AutoFocusCamera then
+                    positionCameraAtPiano(currentPianoModel, keyPart)
+                end
+                
+                task.wait(Settings.ClickDelay)
+                clickPianoKey(keyPart)
+            else
+                print("[Libra Heart] Key not found:", noteName)
+            end
+        end
+        
+        task.wait(math.max(duration, Settings.NoteGap))
+    end
+end
+
+-- Helper: 通常の曲を演奏
+local function playSimpleSong(song)
+    for i = 1, #song.Notes do
+        if not Settings.AutoPlayEnabled then break end
+        
+        local noteName = song.Notes[i]
+        local duration = song.Durations[i] or 0.4
+        
+        if noteName ~= "rest" then
+            local keyPart = pianoKeys[noteName]
+            
+            if keyPart then
+                if Settings.AutoFocusCamera then
+                    positionCameraAtPiano(currentPianoModel, keyPart)
+                end
+                
+                task.wait(Settings.ClickDelay)
+                clickPianoKey(keyPart)
+            end
+        end
+        
+        task.wait(math.max(duration * (1 / Settings.PlaySpeed), Settings.NoteGap))
+    end
+end
+
 -- 自動演奏開始
 local function startAutoPlay()
     if autoPlayThread then
@@ -285,7 +348,7 @@ local function startAutoPlay()
         if #foundPianos == 0 then
             Rayfield:Notify({
                Title = "❌ ピアノが見つかりません",
-               Content = "マップ内にピアノがありません。スポーンしてください！",
+               Content = "おもちゃメニューから青いピアノをスポーンしてください！",
                Duration = 5,
                Image = 4483362458
             })
@@ -312,10 +375,13 @@ local function startAutoPlay()
         -- 鍵盤を取得
         pianoKeys = getPianoKeys(currentPianoModel)
         
-        if next(pianoKeys) == nil then
+        local keyCount = 0
+        for _ in pairs(pianoKeys) do keyCount = keyCount + 1 end
+        
+        if keyCount == 0 then
             Rayfield:Notify({
                Title = "❌ 鍵盤が見つかりません",
-               Content = "ピアノに鍵盤（C, D, E等）が見つかりませんでした",
+               Content = "ピアノに音符名の鍵盤が見つかりませんでした",
                Duration = 5,
                Image = 4483362458
             })
@@ -325,7 +391,7 @@ local function startAutoPlay()
         
         Rayfield:Notify({
            Title = "✅ ピアノ発見！",
-           Content = string.format("見つかった鍵盤: %d個", #pianoKeys),
+           Content = string.format("見つかった鍵盤: %d個", keyCount),
            Duration = 3,
            Image = 4483362458
         })
@@ -343,29 +409,40 @@ local function startAutoPlay()
         while Settings.AutoPlayEnabled do
             local currentSong = Songs[Settings.CurrentSong]
             if currentSong then
-                for i = 1, #currentSong.Notes do
+                if currentSong.Name == "Libra Heart - imaizumiyui" then
+                    -- Libra Heart完全版を演奏
+                    playSection(currentSong.Intro)
                     if not Settings.AutoPlayEnabled then break end
+                    task.wait(0.3)
                     
-                    local noteName = currentSong.Notes[i]
-                    local duration = currentSong.Durations[i] or 0.4
+                    playSection(currentSong.VerseA)
+                    if not Settings.AutoPlayEnabled then break end
+                    task.wait(0.3)
                     
-                    local keyPart = pianoKeys[noteName]
+                    playSection(currentSong.Chorus)
+                    if not Settings.AutoPlayEnabled then break end
+                    task.wait(0.3)
                     
-                    if keyPart then
-                        -- カメラを鍵盤に向ける
-                        if Settings.AutoFocusCamera then
-                            positionCameraAtPiano(currentPianoModel, keyPart)
-                        end
-                        
-                        task.wait(Settings.ClickDelay)
-                        
-                        -- 鍵盤をクリック
-                        pcall(function()
-                            clickPianoKey(keyPart)
-                        end)
-                    end
+                    playSection(currentSong.VerseA)
+                    if not Settings.AutoPlayEnabled then break end
+                    task.wait(0.3)
                     
-                    task.wait(math.max(duration, Settings.NoteGap))
+                    playSection(currentSong.Chorus)
+                    if not Settings.AutoPlayEnabled then break end
+                    task.wait(0.3)
+                    
+                    playSection(currentSong.Bridge)
+                    if not Settings.AutoPlayEnabled then break end
+                    task.wait(0.3)
+                    
+                    playSection(currentSong.Chorus)
+                    if not Settings.AutoPlayEnabled then break end
+                    task.wait(0.5)
+                    
+                    playSection(currentSong.Outro)
+                else
+                    -- 通常の曲を演奏
+                    playSimpleSong(currentSong)
                 end
             end
             
@@ -378,7 +455,7 @@ local function startAutoPlay()
 end
 
 -- GUI作成
-local MainTab = Window:CreateTab("🎵 メイン", 4483362458)
+local MainTab = Window:CreateTab("🎵 Libra Heart", 4483362458)
 local SettingsTab = Window:CreateTab("⚙️ 設定", 4483362458)
 local InfoTab = Window:CreateTab("ℹ️ 情報", 4483362458)
 
@@ -410,8 +487,8 @@ local AutoPlayToggle = MainTab:CreateToggle({
 
 local SongDropdown = MainTab:CreateDropdown({
    Name = "曲を選択",
-   Options = {"きらきら星", "メリーさんの羊", "ハッピーバースデー", "かえるの歌", "ドレミの歌", "チューリップ"},
-   CurrentOption = {"きらきら星"},
+   Options = {"Libra Heart - imaizumiyui", "きらきら星", "メリーさんの羊", "ハッピーバースデー", "かえるの歌"},
+   CurrentOption = {"Libra Heart - imaizumiyui"},
    MultipleOptions = false,
    Flag = "SongDropdown",
    Callback = function(Option)
@@ -429,6 +506,9 @@ local SongDropdown = MainTab:CreateDropdown({
        end
    end
 })
+
+MainTab:CreateLabel("曲: Libra Heart by imaizumiyui")
+MainTab:CreateLabel("完全版メロディー（Intro→Verse→Chorus→Bridge→Outro）")
 
 local CameraSection = MainTab:CreateSection("カメラ")
 
@@ -468,14 +548,13 @@ local FindPianoButton = MainTab:CreateButton({
               Image = 4483362458
            })
            
-           -- 詳細情報を出力
            for i, piano in ipairs(foundPianos) do
-               print(string.format("ピアノ %d: %s", i, piano.Name))
+               print(string.format("[Libra Heart] Piano %d: %s", i, piano.Name))
            end
        else
            Rayfield:Notify({
               Title = "❌ ピアノなし",
-              Content = "青いピアノをスポーンしてください！",
+              Content = "おもちゃから青いピアノをスポーンしてください！",
               Duration = 5,
               Image = 4483362458
            })
@@ -530,6 +609,18 @@ local TestButton = MainTab:CreateButton({
 -- 設定タブ
 local TimingSection = SettingsTab:CreateSection("タイミング")
 
+local PlaySpeedSlider = SettingsTab:CreateSlider({
+   Name = "再生速度",
+   Range = {0.5, 2.0},
+   Increment = 0.1,
+   Suffix = "x",
+   CurrentValue = 1.0,
+   Flag = "PlaySpeedSlider",
+   Callback = function(Value)
+       Settings.PlaySpeed = Value
+   end
+})
+
 local ClickDelaySlider = SettingsTab:CreateSlider({
    Name = "クリック遅延",
    Range = {0.01, 0.3},
@@ -556,10 +647,10 @@ local NoteGapSlider = SettingsTab:CreateSlider({
 
 local LoopDelaySlider = SettingsTab:CreateSlider({
    Name = "ループ待機",
-   Range = {0.5, 10},
+   Range = {1, 10},
    Increment = 0.5,
    Suffix = "秒",
-   CurrentValue = 2,
+   CurrentValue = 3,
    Flag = "LoopDelaySlider",
    Callback = function(Value)
        Settings.LoopDelay = Value
@@ -567,73 +658,66 @@ local LoopDelaySlider = SettingsTab:CreateSlider({
 })
 
 -- 情報タブ
+InfoTab:CreateSection("🎵 Libra Heart について")
+
+InfoTab:CreateParagraph({
+    Title = "曲情報",
+    Content = "アーティスト: imaizumiyui\nキー: C#m\n\n完全版メロディー:\n• Intro（イントロ）\n• Verse A（Aメロ）\n• Chorus（サビ）\n• Bridge（ブリッジ）\n• Outro（アウトロ）"
+})
+
 InfoTab:CreateSection("📖 使い方")
 
 InfoTab:CreateParagraph({
-    Title = "ステップ 1",
-    Content = "ゲーム内で青いピアノをスポーンする（お店から購入してスポーン）"
+    Title = "ステップ 1: ピアノをスポーン",
+    Content = "おもちゃメニューからYamaRolanSioの青いピアノをスポーン"
 })
 
 InfoTab:CreateParagraph({
-    Title = "ステップ 2",
-    Content = "「ピアノを探す」ボタンを押してピアノを検出"
+    Title = "ステップ 2: 検出",
+    Content = "「ピアノを探す」ボタンでピアノを検出（自動検出も実行されます）"
 })
 
 InfoTab:CreateParagraph({
-    Title = "ステップ 3",
-    Content = "曲を選んで「自動演奏」をオン！"
+    Title = "ステップ 3: 演奏",
+    Content = "曲を選んで「自動演奏」をON！Libra Heartの完全版が流れます"
 })
 
 InfoTab:CreateSection("ℹ️ スクリプト情報")
 
-InfoTab:CreateLabel("Fling Things and People - Auto Piano v2.0")
-InfoTab:CreateLabel("青いピアノ対応")
+InfoTab:CreateLabel("Libra Heart Auto Piano v4.0")
+InfoTab:CreateLabel("YamaRolanSio 青ピアノ対応")
 InfoTab:CreateLabel("")
-InfoTab:CreateLabel("✓ 広範囲ピアノ検索")
-InfoTab:CreateLabel("✓ 青色ピアノ自動検出")
-InfoTab:CreateLabel("✓ 6曲搭載")
+InfoTab:CreateLabel("✓ Libra Heart 完全版搭載")
+InfoTab:CreateLabel("✓ Intro→Verse→Chorus→Bridge→Outro")
+InfoTab:CreateLabel("✓ 自動ピアノ検出")
 InfoTab:CreateLabel("✓ カメラ追従機能")
+InfoTab:CreateLabel("✓ 再生速度調整")
+InfoTab:CreateLabel("✓ 5曲収録")
 
 InfoTab:CreateSection("⚠️ 注意")
 
 InfoTab:CreateParagraph({
-    Title = "ピアノが見つからない場合",
-    Content = "• ゲーム内でピアノをスポーンしてください\n• お店（Shop）から青いピアノを購入\n• スポーンした後「ピアノを探す」を押す"
+    Title = "対応ピアノ",
+    Content = "• YamaRolanSio の青いピアノ\n• おもちゃメニューからスポーン可能\n• C, C#, D, D#, E, F, F#, G, G#, A, A#, B の鍵盤が必要"
 })
 
 InfoTab:CreateParagraph({
-    Title = "対応ピアノ",
-    Content = "• 青色のピアノ\n• C, D, E, F, G, A, B の鍵盤があるもの\n• ProximityPrompt または ClickDetector付き"
+    Title = "ピアノが見つからない場合",
+    Content = "• F9キーでコンソールを開く\n• [Libra Heart] から始まるログを確認\n• 「ピアノを探す」を手動で実行\n• おもちゃメニューから青いピアノを再配置してください"
 })
 
--- 初期通知
+InfoTab:CreateSection("💬 クレジット")
+
+InfoTab:CreateParagraph({
+    Title = "製作者",
+    Content = "Script: ChatGPT改良版\nOriginal Concept: imaizumiyui 曲に基づく\nVersion: 4.0 完全版"
+})
+
 Rayfield:Notify({
-   Title = "🎹 Auto Piano 準備完了",
-   Content = "青いピアノをスポーンしてください！",
-   Duration = 5,
+   Title = "🎹 Libra Heart Auto Piano 起動完了",
+   Content = "青ピアノをスポーンして、「自動演奏」をONにしてください！",
+   Duration = 6,
    Image = 4483362458
 })
 
--- 自動検索
-task.spawn(function()
-    task.wait(3)
-    foundPianos = findAllPianos()
-    if #foundPianos > 0 then
-        Rayfield:Notify({
-           Title = "✅ ピアノ自動検出",
-           Content = string.format("%d個のピアノが見つかりました！", #foundPianos),
-           Duration = 4,
-           Image = 4483362458
-        })
-    else
-        Rayfield:Notify({
-           Title = "ℹ️ ピアノ未検出",
-           Content = "青いピアノをスポーンしてから「ピアノを探す」を押してください",
-           Duration = 5,
-           Image = 4483362458
-        })
-    end
-end)
-
-print("🎹 Fling Things and People - Auto Piano 読み込み完了!")
-print("🔍 広範囲ピアノ検索モード有効")
+print("[Libra Heart] Script fully loaded. Ready to play Libra Heart by imaizumiyui!")
