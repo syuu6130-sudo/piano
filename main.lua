@@ -850,7 +850,8 @@ local function createGUI()
             NotificationManager.show("success", "Pianos Found!", 
                 string.format("Found %d piano(s) with %d keys", #State.foundPianos, keyCount))
         else
-            NotificationManager.show("error", "No Pianos"found!\n\nTroubleshooting:\n• Check if piano is BLUE\n• Verify key names (C, D, E, F, G, A, B)\n• Use Debug tab for more info", 
+            NotificationManager.show("error", "No Pianos", 
+                "No blue pianofound!\n\nTroubleshooting:\n• Check if piano is BLUE\n• Verify key names (C, D, E, F, G, A, B)\n• Use Debug tab for more info", 
                 CONSTANTS.NOTIFICATION_DURATION_LONG)
         end
     end, 1)
@@ -1394,5 +1395,4 @@ print("[Libra Heart] Script loaded. Use Debug tab if piano not found!")
     • Some custom pianos may not be compatible
     
     ============================================================================
-]] 
-                "No blue piano
+]]
