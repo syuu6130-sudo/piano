@@ -1,20 +1,20 @@
 --[[
-    Auto Piano Player for "物や人を飛ばす" (Fling Things and People)
-    Roblox Game Auto Piano Script with Rayfield GUI
+    Auto Piano Player for "Fling Things and People"
+    Works with spawned blue piano toys
     
     Features:
-    - Finds and clicks piano toy automatically
+    - Finds ANY piano in the game (spawned or placed)
+    - Clicks piano keys automatically
     - Camera auto-positioning
-    - Multiple song playback
-    - Works with ProximityPrompts
+    - Multiple songs
 ]]
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-   Name = "🎹 物や人を飛ばす - Auto Piano",
+   Name = "🎹 Fling Piano Auto Player",
    LoadingTitle = "ピアノ自動演奏読み込み中...",
-   LoadingSubtitle = "by Script Creator",
+   LoadingSubtitle = "青いピアノ対応版",
    ConfigurationSaving = {
       Enabled = true,
       FolderName = "FlingPianoConfig",
@@ -35,7 +35,6 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
-local Mouse = LocalPlayer:GetMouse()
 
 -- Variables
 local Settings = {
@@ -46,129 +45,142 @@ local Settings = {
     LoopDelay = 2,
     CurrentSong = 1,
     TeleportToPiano = false,
-    PlayDistance = 15
-}
-
--- Piano key names mapping
-local PianoKeyNames = {
-    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
-    "C5", "C#5", "D5", "D#5", "E5", "F5", "F#5", "G5", "G#5", "A5", "A#5", "B5"
+    SearchRadius = 500  -- 検索範囲を広げる
 }
 
 -- Songs Library
 local Songs = {
     {
-        Name = "きらきら星 (Twinkle Star)",
-        Sequence = {
-            {"C", 0.4}, {"C", 0.4}, {"G", 0.4}, {"G", 0.4},
-            {"A", 0.4}, {"A", 0.4}, {"G", 0.8},
-            {"F", 0.4}, {"F", 0.4}, {"E", 0.4}, {"E", 0.4},
-            {"D", 0.4}, {"D", 0.4}, {"C", 0.8}
-        }
+        Name = "きらきら星",
+        Notes = {"C", "C", "G", "G", "A", "A", "G", "F", "F", "E", "E", "D", "D", "C"},
+        Durations = {0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8}
     },
     {
-        Name = "メリーさんの羊 (Mary's Lamb)",
-        Sequence = {
-            {"E", 0.4}, {"D", 0.4}, {"C", 0.4}, {"D", 0.4},
-            {"E", 0.4}, {"E", 0.4}, {"E", 0.8},
-            {"D", 0.4}, {"D", 0.4}, {"D", 0.8},
-            {"E", 0.4}, {"G", 0.4}, {"G", 0.8}
-        }
+        Name = "メリーさんの羊",
+        Notes = {"E", "D", "C", "D", "E", "E", "E", "D", "D", "D", "E", "G", "G"},
+        Durations = {0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8, 0.4, 0.4, 0.8, 0.4, 0.4, 0.8}
     },
     {
-        Name = "ハッピーバースデー (Happy Birthday)",
-        Sequence = {
-            {"C", 0.3}, {"C", 0.3}, {"D", 0.6}, {"C", 0.6},
-            {"F", 0.6}, {"E", 1.2},
-            {"C", 0.3}, {"C", 0.3}, {"D", 0.6}, {"C", 0.6},
-            {"G", 0.6}, {"F", 1.2}
-        }
+        Name = "ハッピーバースデー",
+        Notes = {"C", "C", "D", "C", "F", "E", "C", "C", "D", "C", "G", "F"},
+        Durations = {0.3, 0.3, 0.6, 0.6, 0.6, 1.2, 0.3, 0.3, 0.6, 0.6, 0.6, 1.2}
     },
     {
-        Name = "かえるの歌 (Frog Song)",
-        Sequence = {
-            {"C", 0.4}, {"D", 0.4}, {"E", 0.4}, {"F", 0.4},
-            {"E", 0.4}, {"D", 0.4}, {"C", 0.8},
-            {"E", 0.4}, {"F", 0.4}, {"G", 0.4}, {"A", 0.4},
-            {"G", 0.4}, {"F", 0.4}, {"E", 0.8}
-        }
+        Name = "かえるの歌",
+        Notes = {"C", "D", "E", "F", "E", "D", "C", "E", "F", "G", "A", "G", "F", "E"},
+        Durations = {0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8}
     },
     {
-        Name = "ドレミの歌 (Do-Re-Mi)",
-        Sequence = {
-            {"C", 0.4}, {"D", 0.4}, {"E", 0.4}, {"C", 0.4},
-            {"E", 0.4}, {"C", 0.4}, {"E", 0.8},
-            {"D", 0.4}, {"E", 0.4}, {"F", 0.4}, {"F", 0.4},
-            {"E", 0.4}, {"D", 0.4}, {"F", 0.8}
-        }
+        Name = "ドレミの歌",
+        Notes = {"C", "D", "E", "C", "E", "C", "E", "D", "E", "F", "F", "E", "D", "F"},
+        Durations = {0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8}
     },
     {
-        Name = "チューリップ (Tulip)",
-        Sequence = {
-            {"C", 0.4}, {"D", 0.4}, {"E", 0.4}, {"C", 0.4},
-            {"E", 0.4}, {"F", 0.4}, {"E", 0.4}, {"D", 0.4},
-            {"C", 0.4}, {"E", 0.4}, {"G", 0.4}, {"G", 0.4},
-            {"E", 0.4}, {"D", 0.4}, {"C", 0.8}
-        }
+        Name = "チューリップ",
+        Notes = {"C", "D", "E", "C", "E", "F", "E", "D", "C", "E", "G", "G", "E", "D", "C"},
+        Durations = {0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.8}
     }
 }
 
 local currentPianoModel = nil
 local pianoKeys = {}
 local autoPlayThread = nil
+local foundPianos = {}
 
--- Helper: Find piano toy in workspace
-local function findPianoToy()
-    -- Search in Workspace for piano models
+-- Helper: 全てのピアノを検索（広範囲）
+local function findAllPianos()
+    local pianos = {}
+    
+    -- Workspace全体を検索
     for _, obj in ipairs(Workspace:GetDescendants()) do
         if obj:IsA("Model") then
-            -- Check for piano-related names
             local name = obj.Name:lower()
-            if name:find("piano") or name:find("yamarolandsio") or name:find("yamarolansio") then
-                -- Verify it has piano keys
+            
+            -- ピアノに関連する名前をチェック
+            if name:find("piano") or name:find("yamaha") or name:find("keyboard") or 
+               name:find("roland") or name:find("sio") then
+                
+                -- 青色のパーツがあるか確認
+                local hasBlueKeys = false
                 local hasKeys = false
-                for _, child in ipairs(obj:GetDescendants()) do
-                    if child:IsA("BasePart") and (
-                        child.Name == "C" or child.Name == "D" or child.Name == "E" or
-                        child.Name:find("Key") or child.Name:find("Button")
-                    ) then
-                        hasKeys = true
-                        break
+                
+                for _, part in ipairs(obj:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        -- 青色チェック
+                        if part.Color == Color3.fromRGB(0, 0, 255) or 
+                           part.Color == Color3.fromRGB(13, 105, 172) or
+                           part.BrickColor == BrickColor.new("Really blue") or
+                           part.BrickColor == BrickColor.new("Bright blue") then
+                            hasBlueKeys = true
+                        end
+                        
+                        -- 鍵盤名チェック
+                        if part.Name == "C" or part.Name == "D" or part.Name == "E" or
+                           part.Name == "F" or part.Name == "G" or part.Name == "A" or
+                           part.Name == "B" or part.Name:find("Key") or part.Name:find("Button") then
+                            hasKeys = true
+                        end
                     end
                 end
-                if hasKeys then
-                    return obj
+                
+                if hasKeys or hasBlueKeys then
+                    table.insert(pianos, obj)
                 end
             end
         end
     end
     
-    -- Also check in Items folder if exists
-    local itemsFolder = Workspace:FindFirstChild("Items") or Workspace:FindFirstChild("Toys")
-    if itemsFolder then
-        for _, item in ipairs(itemsFolder:GetDescendants()) do
-            if item:IsA("Model") and item.Name:lower():find("piano") then
-                return item
+    -- 青いパーツが集まっている場所を検索（ピアノの可能性）
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            local color = obj.Color
+            if (color == Color3.fromRGB(0, 0, 255) or 
+                color == Color3.fromRGB(13, 105, 172) or
+                obj.BrickColor == BrickColor.new("Really blue") or
+                obj.BrickColor == BrickColor.new("Bright blue")) and
+               (obj.Name == "C" or obj.Name == "D" or obj.Name == "E" or 
+                obj.Name == "F" or obj.Name == "G" or obj.Name == "A" or 
+                obj.Name == "B") then
+                
+                -- 親モデルを取得
+                local parent = obj.Parent
+                if parent and parent:IsA("Model") and not table.find(pianos, parent) then
+                    table.insert(pianos, parent)
+                end
             end
         end
     end
     
-    return nil
+    return pianos
 end
 
--- Helper: Get all piano keys from piano model
+-- Helper: ピアノから鍵盤を取得
 local function getPianoKeys(pianoModel)
     local keys = {}
     
     if not pianoModel then return keys end
     
+    -- 全ての子孫を検索
     for _, obj in ipairs(pianoModel:GetDescendants()) do
         if obj:IsA("BasePart") then
-            -- Check if this is a piano key
-            for _, keyName in ipairs(PianoKeyNames) do
-                if obj.Name == keyName or obj.Name:find(keyName) then
-                    keys[keyName] = obj
-                    break
+            local name = obj.Name
+            
+            -- 音符名のパターンマッチング
+            if name == "C" or name == "D" or name == "E" or name == "F" or 
+               name == "G" or name == "A" or name == "B" then
+                keys[name] = obj
+            elseif name:match("^[CDEFGAB]$") then
+                local noteName = name:match("^([CDEFGAB])")
+                keys[noteName] = obj
+            elseif name:find("Key") and (name:find("C") or name:find("D") or 
+                   name:find("E") or name:find("F") or name:find("G") or 
+                   name:find("A") or name:find("B")) then
+                -- "KeyC", "CKey" などの形式
+                for _, note in ipairs({"C", "D", "E", "F", "G", "A", "B"}) do
+                    if name:find(note) then
+                        keys[note] = obj
+                        break
+                    end
                 end
             end
         end
@@ -177,102 +189,103 @@ local function getPianoKeys(pianoModel)
     return keys
 end
 
--- Helper: Click piano key using different methods
+-- Helper: 鍵盤をクリック
 local function clickPianoKey(keyPart)
     if not keyPart then return false end
     
-    -- Method 1: Check for ProximityPrompt
+    -- ProximityPromptを探す
+    for _, child in ipairs(keyPart:GetDescendants()) do
+        if child:IsA("ProximityPrompt") then
+            pcall(function()
+                fireproximityprompt(child)
+            end)
+            return true
+        end
+    end
+    
+    -- ClickDetectorを探す
+    for _, child in ipairs(keyPart:GetDescendants()) do
+        if child:IsA("ClickDetector") then
+            pcall(function()
+                fireclickdetector(child)
+            end)
+            return true
+        end
+    end
+    
+    -- 直接の子でも探す
     local proximityPrompt = keyPart:FindFirstChildOfClass("ProximityPrompt")
-    if not proximityPrompt then
-        for _, child in ipairs(keyPart:GetDescendants()) do
-            if child:IsA("ProximityPrompt") then
-                proximityPrompt = child
-                break
-            end
-        end
-    end
-    
     if proximityPrompt then
-        fireproximityprompt(proximityPrompt)
+        pcall(function()
+            fireproximityprompt(proximityPrompt)
+        end)
         return true
     end
     
-    -- Method 2: Check for ClickDetector
     local clickDetector = keyPart:FindFirstChildOfClass("ClickDetector")
-    if not clickDetector then
-        for _, child in ipairs(keyPart:GetDescendants()) do
-            if child:IsA("ClickDetector") then
-                clickDetector = child
-                break
-            end
-        end
-    end
-    
     if clickDetector then
-        fireclickdetector(clickDetector)
+        pcall(function()
+            fireclickdetector(clickDetector)
+        end)
         return true
     end
     
-    -- Method 3: Simulate mouse click on part
-    local camera = Workspace.CurrentCamera
-    local screenPoint = camera:WorldToScreenPoint(keyPart.Position)
-    
-    VirtualInputManager:SendMouseButtonEvent(screenPoint.X, screenPoint.Y, 0, true, game, 0)
-    task.wait(0.05)
-    VirtualInputManager:SendMouseButtonEvent(screenPoint.X, screenPoint.Y, 0, false, game, 0)
+    -- マウスクリックシミュレーション
+    pcall(function()
+        local camera = Workspace.CurrentCamera
+        local screenPoint, onScreen = camera:WorldToScreenPoint(keyPart.Position)
+        
+        if onScreen then
+            VirtualInputManager:SendMouseButtonEvent(screenPoint.X, screenPoint.Y, 0, true, game, 0)
+            task.wait(0.05)
+            VirtualInputManager:SendMouseButtonEvent(screenPoint.X, screenPoint.Y, 0, false, game, 0)
+        end
+    end)
     
     return true
 end
 
--- Helper: Position camera to look at piano
+-- Helper: カメラをピアノに向ける
 local function positionCameraAtPiano(pianoModel, keyPart)
     if not Settings.AutoFocusCamera then return end
     if not pianoModel then return end
     
-    local targetPos = keyPart and keyPart.Position or pianoModel:GetModelCFrame().Position
-    local offset = Vector3.new(0, 5, 10)
-    
-    Camera.CameraType = Enum.CameraType.Scriptable
-    Camera.CFrame = CFrame.new(targetPos + offset, targetPos)
+    pcall(function()
+        local targetPos = keyPart and keyPart.Position or pianoModel:GetModelCFrame().Position
+        local offset = Vector3.new(0, 5, 10)
+        
+        Camera.CameraType = Enum.CameraType.Scriptable
+        Camera.CFrame = CFrame.new(targetPos + offset, targetPos)
+    end)
 end
 
--- Helper: Teleport player near piano
+-- Helper: ピアノにテレポート
 local function teleportToPiano(pianoModel)
     if not pianoModel then return end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
     
-    local pianoPos = pianoModel:GetModelCFrame().Position
-    local teleportPos = pianoPos + Vector3.new(0, 3, 8)
-    
-    LocalPlayer.Character:SetPrimaryPartCFrame(CFrame.new(teleportPos))
+    pcall(function()
+        local pianoPos = pianoModel:GetModelCFrame().Position
+        local teleportPos = pianoPos + Vector3.new(0, 3, 8)
+        
+        LocalPlayer.Character:SetPrimaryPartCFrame(CFrame.new(teleportPos))
+    end)
 end
 
--- Helper: Check if player is close enough to piano
-local function isPlayerNearPiano(pianoModel)
-    if not pianoModel then return false end
-    if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
-    
-    local playerPos = LocalPlayer.Character.PrimaryPart.Position
-    local pianoPos = pianoModel:GetModelCFrame().Position
-    local distance = (playerPos - pianoPos).Magnitude
-    
-    return distance <= Settings.PlayDistance
-end
-
--- Auto play function
+-- 自動演奏開始
 local function startAutoPlay()
     if autoPlayThread then
         task.cancel(autoPlayThread)
     end
     
     autoPlayThread = task.spawn(function()
-        -- Find piano
-        currentPianoModel = findPianoToy()
+        -- ピアノを探す
+        foundPianos = findAllPianos()
         
-        if not currentPianoModel then
+        if #foundPianos == 0 then
             Rayfield:Notify({
                Title = "❌ ピアノが見つかりません",
-               Content = "ゲーム内にピアノのおもちゃが見つかりませんでした",
+               Content = "マップ内にピアノがありません。スポーンしてください！",
                Duration = 5,
                Image = 4483362458
             })
@@ -280,13 +293,29 @@ local function startAutoPlay()
             return
         end
         
-        -- Get piano keys
+        -- 一番近いピアノを選択
+        if LocalPlayer.Character and LocalPlayer.Character.PrimaryPart then
+            local playerPos = LocalPlayer.Character.PrimaryPart.Position
+            local closestDist = math.huge
+            
+            for _, piano in ipairs(foundPianos) do
+                local dist = (piano:GetModelCFrame().Position - playerPos).Magnitude
+                if dist < closestDist then
+                    closestDist = dist
+                    currentPianoModel = piano
+                end
+            end
+        else
+            currentPianoModel = foundPianos[1]
+        end
+        
+        -- 鍵盤を取得
         pianoKeys = getPianoKeys(currentPianoModel)
         
         if next(pianoKeys) == nil then
             Rayfield:Notify({
-               Title = "❌ ピアノの鍵盤が見つかりません",
-               Content = "ピアノモデルに鍵盤が見つかりませんでした",
+               Title = "❌ 鍵盤が見つかりません",
+               Content = "ピアノに鍵盤（C, D, E等）が見つかりませんでした",
                Duration = 5,
                Image = 4483362458
             })
@@ -296,62 +325,44 @@ local function startAutoPlay()
         
         Rayfield:Notify({
            Title = "✅ ピアノ発見！",
-           Content = "自動演奏を開始します...",
+           Content = string.format("見つかった鍵盤: %d個", #pianoKeys),
            Duration = 3,
            Image = 4483362458
         })
         
-        -- Teleport if enabled
+        -- テレポート
         if Settings.TeleportToPiano then
             teleportToPiano(currentPianoModel)
             task.wait(0.5)
         end
         
-        -- Position camera
+        -- カメラ設定
         positionCameraAtPiano(currentPianoModel, nil)
         
-        -- Main play loop
+        -- メインループ
         while Settings.AutoPlayEnabled do
-            -- Check if player is still near piano
-            if not isPlayerNearPiano(currentPianoModel) and not Settings.TeleportToPiano then
-                Rayfield:Notify({
-                   Title = "⚠️ ピアノから離れています",
-                   Content = "ピアノに近づいてください",
-                   Duration = 3,
-                   Image = 4483362458
-                })
-                task.wait(2)
-                continue
-            end
-            
             local currentSong = Songs[Settings.CurrentSong]
             if currentSong then
-                for _, noteInfo in ipairs(currentSong.Sequence) do
+                for i = 1, #currentSong.Notes do
                     if not Settings.AutoPlayEnabled then break end
                     
-                    local noteName = noteInfo[1]
-                    local duration = noteInfo[2] or 0.4
+                    local noteName = currentSong.Notes[i]
+                    local duration = currentSong.Durations[i] or 0.4
                     
-                    if noteName ~= "rest" then
-                        local keyPart = pianoKeys[noteName]
-                        
-                        if keyPart then
-                            -- Focus camera on key
-                            if Settings.AutoFocusCamera then
-                                positionCameraAtPiano(currentPianoModel, keyPart)
-                            end
-                            
-                            task.wait(Settings.ClickDelay)
-                            
-                            -- Click the key
-                            local success = clickPianoKey(keyPart)
-                            
-                            if not success then
-                                warn("キーのクリックに失敗:", noteName)
-                            end
-                        else
-                            warn("鍵盤が見つかりません:", noteName)
+                    local keyPart = pianoKeys[noteName]
+                    
+                    if keyPart then
+                        -- カメラを鍵盤に向ける
+                        if Settings.AutoFocusCamera then
+                            positionCameraAtPiano(currentPianoModel, keyPart)
                         end
+                        
+                        task.wait(Settings.ClickDelay)
+                        
+                        -- 鍵盤をクリック
+                        pcall(function()
+                            clickPianoKey(keyPart)
+                        end)
                     end
                     
                     task.wait(math.max(duration, Settings.NoteGap))
@@ -361,21 +372,21 @@ local function startAutoPlay()
             task.wait(Settings.LoopDelay)
         end
         
-        -- Reset camera
+        -- カメラをリセット
         Camera.CameraType = Enum.CameraType.Custom
     end)
 end
 
--- GUI Creation
-local MainTab = Window:CreateTab("🎵 メイン操作", 4483362458)
+-- GUI作成
+local MainTab = Window:CreateTab("🎵 メイン", 4483362458)
 local SettingsTab = Window:CreateTab("⚙️ 設定", 4483362458)
 local InfoTab = Window:CreateTab("ℹ️ 情報", 4483362458)
 
--- Main Tab
-local PlaybackSection = MainTab:CreateSection("再生コントロール")
+-- メインタブ
+local PlaySection = MainTab:CreateSection("再生コントロール")
 
 local AutoPlayToggle = MainTab:CreateToggle({
-   Name = "🎹 自動演奏を開始",
+   Name = "🎹 自動演奏",
    CurrentValue = false,
    Flag = "AutoPlayToggle",
    Callback = function(Value)
@@ -388,9 +399,9 @@ local AutoPlayToggle = MainTab:CreateToggle({
            end
            Camera.CameraType = Enum.CameraType.Custom
            Rayfield:Notify({
-              Title = "⏸️ 演奏停止",
-              Content = "自動演奏を停止しました",
-              Duration = 3,
+              Title = "⏸️ 停止",
+              Content = "演奏を停止しました",
+              Duration = 2,
               Image = 4483362458
            })
        end
@@ -399,15 +410,8 @@ local AutoPlayToggle = MainTab:CreateToggle({
 
 local SongDropdown = MainTab:CreateDropdown({
    Name = "曲を選択",
-   Options = {
-       "きらきら星 (Twinkle Star)",
-       "メリーさんの羊 (Mary's Lamb)",
-       "ハッピーバースデー (Happy Birthday)",
-       "かえるの歌 (Frog Song)",
-       "ドレミの歌 (Do-Re-Mi)",
-       "チューリップ (Tulip)"
-   },
-   CurrentOption = {"きらきら星 (Twinkle Star)"},
+   Options = {"きらきら星", "メリーさんの羊", "ハッピーバースデー", "かえるの歌", "ドレミの歌", "チューリップ"},
+   CurrentOption = {"きらきら星"},
    MultipleOptions = false,
    Flag = "SongDropdown",
    Callback = function(Option)
@@ -416,8 +420,8 @@ local SongDropdown = MainTab:CreateDropdown({
                Settings.CurrentSong = i
                Rayfield:Notify({
                   Title = "🎵 曲変更",
-                  Content = "選択: " .. song.Name,
-                  Duration = 3,
+                  Content = song.Name,
+                  Duration = 2,
                   Image = 4483362458
                })
                break
@@ -426,7 +430,7 @@ local SongDropdown = MainTab:CreateDropdown({
    end
 })
 
-local CameraSection = MainTab:CreateSection("カメラ設定")
+local CameraSection = MainTab:CreateSection("カメラ")
 
 local AutoFocusToggle = MainTab:CreateToggle({
    Name = "📹 カメラ自動追従",
@@ -454,20 +458,24 @@ local ManualSection = MainTab:CreateSection("手動操作")
 local FindPianoButton = MainTab:CreateButton({
    Name = "🔍 ピアノを探す",
    Callback = function()
-       local piano = findPianoToy()
-       if piano then
-           currentPianoModel = piano
-           pianoKeys = getPianoKeys(piano)
+       foundPianos = findAllPianos()
+       
+       if #foundPianos > 0 then
            Rayfield:Notify({
               Title = "✅ ピアノ発見！",
-              Content = "見つかりました: " .. piano.Name .. " (鍵盤数: " .. #pianoKeys .. ")",
+              Content = string.format("%d個のピアノが見つかりました", #foundPianos),
               Duration = 4,
               Image = 4483362458
            })
+           
+           -- 詳細情報を出力
+           for i, piano in ipairs(foundPianos) do
+               print(string.format("ピアノ %d: %s", i, piano.Name))
+           end
        else
            Rayfield:Notify({
               Title = "❌ ピアノなし",
-              Content = "ピアノのおもちゃが見つかりませんでした",
+              Content = "青いピアノをスポーンしてください！",
               Duration = 5,
               Image = 4483362458
            })
@@ -476,19 +484,19 @@ local FindPianoButton = MainTab:CreateButton({
 })
 
 local TeleportNowButton = MainTab:CreateButton({
-   Name = "🎹 今すぐピアノへテレポート",
+   Name = "🎹 今すぐテレポート",
    Callback = function()
        if currentPianoModel then
            teleportToPiano(currentPianoModel)
            Rayfield:Notify({
               Title = "✅ テレポート完了",
               Content = "ピアノの近くに移動しました",
-              Duration = 3,
+              Duration = 2,
               Image = 4483362458
            })
        else
            Rayfield:Notify({
-              Title = "❌ ピアノが未設定",
+              Title = "❌ ピアノ未設定",
               Content = "先に「ピアノを探す」を押してください",
               Duration = 3,
               Image = 4483362458
@@ -497,8 +505,30 @@ local TeleportNowButton = MainTab:CreateButton({
    end
 })
 
--- Settings Tab
-local TimingSection = SettingsTab:CreateSection("タイミング設定")
+local TestButton = MainTab:CreateButton({
+   Name = "🧪 テスト (C音)",
+   Callback = function()
+       if pianoKeys["C"] then
+           clickPianoKey(pianoKeys["C"])
+           Rayfield:Notify({
+              Title = "✅ テスト成功",
+              Content = "C音を鳴らしました",
+              Duration = 2,
+              Image = 4483362458
+           })
+       else
+           Rayfield:Notify({
+              Title = "❌ C鍵盤なし",
+              Content = "C鍵盤が見つかりません",
+              Duration = 3,
+              Image = 4483362458
+           })
+       end
+   end
+})
+
+-- 設定タブ
+local TimingSection = SettingsTab:CreateSection("タイミング")
 
 local ClickDelaySlider = SettingsTab:CreateSlider({
    Name = "クリック遅延",
@@ -536,83 +566,74 @@ local LoopDelaySlider = SettingsTab:CreateSlider({
    end
 })
 
-local DistanceSection = SettingsTab:CreateSection("距離設定")
-
-local PlayDistanceSlider = SettingsTab:CreateSlider({
-   Name = "演奏可能距離",
-   Range = {5, 30},
-   Increment = 1,
-   Suffix = " スタッド",
-   CurrentValue = 15,
-   Flag = "PlayDistanceSlider",
-   Callback = function(Value)
-       Settings.PlayDistance = Value
-   end
-})
-
--- Info Tab
+-- 情報タブ
 InfoTab:CreateSection("📖 使い方")
 
 InfoTab:CreateParagraph({
-    Title = "ステップ 1: ピアノを探す",
-    Content = "「ピアノを探す」ボタンを押して、ゲーム内のピアノのおもちゃを探します。"
+    Title = "ステップ 1",
+    Content = "ゲーム内で青いピアノをスポーンする（お店から購入してスポーン）"
 })
 
 InfoTab:CreateParagraph({
-    Title = "ステップ 2: 曲を選択",
-    Content = "ドロップダウンメニューから好きな曲を選びます。日本の童謡が用意されています。"
+    Title = "ステップ 2",
+    Content = "「ピアノを探す」ボタンを押してピアノを検出"
 })
 
 InfoTab:CreateParagraph({
-    Title = "ステップ 3: 演奏開始",
-    Content = "「自動演奏を開始」をオンにすると、自動でピアノを演奏します。"
+    Title = "ステップ 3",
+    Content = "曲を選んで「自動演奏」をオン！"
 })
 
 InfoTab:CreateSection("ℹ️ スクリプト情報")
 
-InfoTab:CreateLabel("🎹 物や人を飛ばす - Auto Piano v1.0")
-InfoTab:CreateLabel("対応ゲーム: Fling Things and People")
+InfoTab:CreateLabel("Fling Things and People - Auto Piano v2.0")
+InfoTab:CreateLabel("青いピアノ対応")
 InfoTab:CreateLabel("")
-InfoTab:CreateLabel("✓ 自動鍵盤クリック")
-InfoTab:CreateLabel("✓ カメラ自動追従")
+InfoTab:CreateLabel("✓ 広範囲ピアノ検索")
+InfoTab:CreateLabel("✓ 青色ピアノ自動検出")
 InfoTab:CreateLabel("✓ 6曲搭載")
-InfoTab:CreateLabel("✓ テレポート機能")
+InfoTab:CreateLabel("✓ カメラ追従機能")
 
-InfoTab:CreateSection("⚠️ 注意事項")
+InfoTab:CreateSection("⚠️ 注意")
 
 InfoTab:CreateParagraph({
-    Title = "必要条件",
-    Content = "• ゲーム「物や人を飛ばす」でプレイ\n• ピアノのおもちゃがマップに存在\n• Executor が fireproximityprompt をサポート"
+    Title = "ピアノが見つからない場合",
+    Content = "• ゲーム内でピアノをスポーンしてください\n• お店（Shop）から青いピアノを購入\n• スポーンした後「ピアノを探す」を押す"
 })
 
 InfoTab:CreateParagraph({
-    Title = "ヒント",
-    Content = "• ピアノに近づいてから演奏開始\n• テレポート機能を使うと便利\n• カメラ追従で演奏を見られます"
+    Title = "対応ピアノ",
+    Content = "• 青色のピアノ\n• C, D, E, F, G, A, B の鍵盤があるもの\n• ProximityPrompt または ClickDetector付き"
 })
 
--- Initial notification
+-- 初期通知
 Rayfield:Notify({
-   Title = "🎹 Auto Piano 読み込み完了",
-   Content = "物や人を飛ばす - ピアノ自動演奏スクリプト",
+   Title = "🎹 Auto Piano 準備完了",
+   Content = "青いピアノをスポーンしてください！",
    Duration = 5,
    Image = 4483362458
 })
 
--- Auto-find piano on load
+-- 自動検索
 task.spawn(function()
-    task.wait(2)
-    local piano = findPianoToy()
-    if piano then
-        currentPianoModel = piano
-        pianoKeys = getPianoKeys(piano)
+    task.wait(3)
+    foundPianos = findAllPianos()
+    if #foundPianos > 0 then
         Rayfield:Notify({
            Title = "✅ ピアノ自動検出",
-           Content = "見つかりました: " .. piano.Name,
+           Content = string.format("%d個のピアノが見つかりました！", #foundPianos),
            Duration = 4,
+           Image = 4483362458
+        })
+    else
+        Rayfield:Notify({
+           Title = "ℹ️ ピアノ未検出",
+           Content = "青いピアノをスポーンしてから「ピアノを探す」を押してください",
+           Duration = 5,
            Image = 4483362458
         })
     end
 end)
 
-print("🎹 物や人を飛ばす - Auto Piano 読み込み完了!")
-print("🔍 ピアノを探しています...")
+print("🎹 Fling Things and People - Auto Piano 読み込み完了!")
+print("🔍 広範囲ピアノ検索モード有効")
