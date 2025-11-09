@@ -1,11 +1,10 @@
 --[[
     Auto Piano Player for "Fling Things and People"
-    Libra Heart by imaizumiyui - Auto Spawn Version 3.0
+    Libra Heart by imaizumiyui - 既存ピアノ対応版
     
-    NEW: Automatic blue piano spawning!
-    Part 1/2 - Core Functions
+    おもちゃメニューから青いピアノをスポーンして使用
     
-    Version: 3.0.0
+    Version: 3.1.0
     License: MIT
 ]]
 
@@ -24,7 +23,7 @@ do
     if success and result then
         Rayfield = result
         RayfieldLoadSuccess = true
-        print("[Libra Heart] Rayfield UI loaded successfully")
+        print("[Libra Heart] Rayfield UI loaded")
     else
         warn("[Libra Heart] Failed to load Rayfield UI:", result)
         return
@@ -32,7 +31,7 @@ do
 end
 
 if not RayfieldLoadSuccess or not Rayfield then
-    error("[Libra Heart] Critical: Rayfield UI library failed to load")
+    error("[Libra Heart] Rayfield UI library failed to load")
     return
 end
 
@@ -41,7 +40,6 @@ end
 -- ============================================================================
 
 local CONSTANTS = {
-    -- Timing
     DEFAULT_CLICK_DELAY = 0.08,
     DEFAULT_NOTE_GAP = 0.05,
     DEFAULT_LOOP_DELAY = 3,
@@ -49,30 +47,15 @@ local CONSTANTS = {
     MIN_PLAY_SPEED = 0.5,
     MAX_PLAY_SPEED = 2.0,
     
-    -- Piano Spawning
-    PIANO_SPAWN_OFFSET = Vector3.new(0, 2, -8),
-    KEY_WIDTH = 2,
-    KEY_HEIGHT = 0.5,
-    KEY_DEPTH = 4,
-    WHITE_KEY_COLOR = Color3.fromRGB(13, 105, 172),
-    BLACK_KEY_COLOR = Color3.fromRGB(0, 32, 96),
-    BLACK_KEY_HEIGHT_OFFSET = 0.3,
-    BLACK_KEY_DEPTH = 2.5,
-    
-    -- Camera
     CAMERA_OFFSET = Vector3.new(0, 5, 10),
     TELEPORT_OFFSET = Vector3.new(0, 3, 8),
     TELEPORT_WAIT_TIME = 0.5,
     
     KEY_NAMES = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"},
-    WHITE_KEYS = {"C", "D", "E", "F", "G", "A", "B"},
-    BLACK_KEYS = {"C#", "D#", "F#", "G#", "A#"},
     
-    -- Delays
     SECTION_DELAY = 0.3,
     FINAL_DELAY = 0.5,
     
-    -- UI
     NOTIFICATION_DURATION_SHORT = 2,
     NOTIFICATION_DURATION_MEDIUM = 3,
     NOTIFICATION_DURATION_LONG = 5,
@@ -85,7 +68,6 @@ local CONSTANTS = {
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
@@ -101,8 +83,7 @@ local State = {
     autoPlayThread = nil,
     originalCameraType = Camera.CameraType,
     cleanupFunctions = {},
-    mutex = false,
-    spawnedPiano = nil
+    mutex = false
 }
 
 local Settings = {
@@ -120,7 +101,6 @@ local Settings = {
 -- ============================================================================
 
 local LibraHeartSong = {
-    Name = "Libra Heart - imaizumiyui",
     Intro = {
         {"D#", 0.4}, {"F#", 0.4}, {"G#", 0.4}, {"A#", 0.4},
         {"G#", 0.4}, {"F#", 0.4}, {"D#", 0.6}, {"rest", 0.2},
@@ -131,8 +111,7 @@ local LibraHeartSong = {
         {"C#", 0.3}, {"D#", 0.3}, {"F#", 0.5}, {"F#", 0.3},
         {"G#", 0.3}, {"F#", 0.3}, {"D#", 0.5}, {"rest", 0.2},
         {"D#", 0.3}, {"F#", 0.3}, {"G#", 0.5}, {"A#", 0.3},
-        {"B", 0.4}, {"A#", 0.4}, {"G#", 0.6},
-        {"rest", 0.2},
+        {"B", 0.4}, {"A#", 0.4}, {"G#", 0.6}, {"rest", 0.2},
         {"C#", 0.3}, {"D#", 0.3}, {"F#", 0.5}, {"F#", 0.3},
         {"G#", 0.3}, {"A#", 0.3}, {"B", 0.5}, {"rest", 0.2},
         {"B", 0.3}, {"A#", 0.3}, {"G#", 0.5}, {"F#", 0.3},
@@ -140,24 +119,19 @@ local LibraHeartSong = {
     },
     Chorus = {
         {"B", 0.4}, {"B", 0.3}, {"A#", 0.3}, {"G#", 0.4},
-        {"F#", 0.3}, {"G#", 0.3}, {"F#", 0.4}, {"D#", 0.4},
-        {"rest", 0.2},
+        {"F#", 0.3}, {"G#", 0.3}, {"F#", 0.4}, {"D#", 0.4}, {"rest", 0.2},
         {"D#", 0.3}, {"F#", 0.3}, {"G#", 0.4}, {"A#", 0.4},
-        {"B", 0.4}, {"B", 0.4}, {"A#", 0.6},
-        {"rest", 0.2},
+        {"B", 0.4}, {"B", 0.4}, {"A#", 0.6}, {"rest", 0.2},
         {"B", 0.4}, {"B", 0.3}, {"C#", 0.3}, {"D#", 0.4},
-        {"F#", 0.4}, {"G#", 0.4}, {"F#", 0.4}, {"D#", 0.4},
-        {"rest", 0.2},
+        {"F#", 0.4}, {"G#", 0.4}, {"F#", 0.4}, {"D#", 0.4}, {"rest", 0.2},
         {"F#", 0.3}, {"G#", 0.3}, {"A#", 0.4}, {"B", 0.4},
         {"A#", 0.4}, {"G#", 0.4}, {"F#", 0.8}
     },
     Bridge = {
         {"D#", 0.4}, {"D#", 0.4}, {"F#", 0.4}, {"G#", 0.4},
-        {"A#", 0.4}, {"B", 0.4}, {"A#", 0.4}, {"G#", 0.4},
-        {"rest", 0.2},
+        {"A#", 0.4}, {"B", 0.4}, {"A#", 0.4}, {"G#", 0.4}, {"rest", 0.2},
         {"F#", 0.3}, {"F#", 0.3}, {"G#", 0.4}, {"A#", 0.4},
-        {"B", 0.4}, {"C#", 0.4}, {"D#", 0.8},
-        {"rest", 0.3}
+        {"B", 0.4}, {"C#", 0.4}, {"D#", 0.8}, {"rest", 0.3}
     },
     Outro = {
         {"B", 0.4}, {"A#", 0.4}, {"G#", 0.4}, {"F#", 0.4},
@@ -236,118 +210,61 @@ function NotificationManager.show(type, title, content, duration)
 end
 
 -- ============================================================================
--- PIANO SPAWNER - NEW!
--- ============================================================================
-
-local PianoSpawner = {}
-
-function PianoSpawner.createPianoKey(keyName, position, isBlackKey)
-    local key = Instance.new("Part")
-    key.Name = keyName
-    key.Size = Vector3.new(
-        CONSTANTS.KEY_WIDTH,
-        CONSTANTS.KEY_HEIGHT,
-        isBlackKey and CONSTANTS.BLACK_KEY_DEPTH or CONSTANTS.KEY_DEPTH
-    )
-    key.Position = position
-    key.Anchored = true
-    key.CanCollide = true
-    key.Material = Enum.Material.SmoothPlastic
-    key.Color = isBlackKey and CONSTANTS.BLACK_KEY_COLOR or CONSTANTS.WHITE_KEY_COLOR
-    
-    local clickDetector = Instance.new("ClickDetector")
-    clickDetector.MaxActivationDistance = 32
-    clickDetector.Parent = key
-    
-    local sound = Instance.new("Sound")
-    sound.SoundId = "rbxassetid://1356420950"
-    sound.Volume = 0.5
-    sound.Parent = key
-    
-    clickDetector.MouseClick:Connect(function()
-        if sound then
-            sound:Play()
-        end
-    end)
-    
-    return key
-end
-
-function PianoSpawner.spawnPiano()
-    if State.spawnedPiano then
-        Utils.safeCall(function()
-            State.spawnedPiano:Destroy()
-        end)
-        State.spawnedPiano = nil
-    end
-    
-    local character = LocalPlayer.Character
-    if not character or not character.PrimaryPart then
-        NotificationManager.show("error", "Spawn Failed", "Character not found!")
-        return false
-    end
-    
-    local spawnPosition = character.PrimaryPart.Position + CONSTANTS.PIANO_SPAWN_OFFSET
-    
-    local pianoModel = Instance.new("Model")
-    pianoModel.Name = "LibraHeartPiano"
-    
-    local base = Instance.new("Part")
-    base.Name = "PianoBase"
-    base.Size = Vector3.new(20, 1, 5)
-    base.Position = spawnPosition - Vector3.new(0, 1, 0)
-    base.Anchored = true
-    base.CanCollide = true
-    base.Material = Enum.Material.Wood
-    base.BrickColor = BrickColor.new("Dark stone grey")
-    base.Parent = pianoModel
-    
-    local whiteKeyIndex = 0
-    
-    for octave = 0, 1 do
-        for i, keyName in ipairs(CONSTANTS.KEY_NAMES) do
-            local isBlackKey = table.find(CONSTANTS.BLACK_KEYS, keyName) ~= nil
-            
-            local xOffset
-            if isBlackKey then
-                if keyName == "C#" then xOffset = whiteKeyIndex - 0.5
-                elseif keyName == "D#" then xOffset = whiteKeyIndex - 0.5
-                elseif keyName == "F#" then xOffset = whiteKeyIndex - 0.5
-                elseif keyName == "G#" then xOffset = whiteKeyIndex - 0.5
-                elseif keyName == "A#" then xOffset = whiteKeyIndex - 0.5
-                end
-            else
-                xOffset = whiteKeyIndex
-                whiteKeyIndex = whiteKeyIndex + 1
-            end
-            
-            local keyPosition = spawnPosition + Vector3.new(
-                (xOffset - 7) * CONSTANTS.KEY_WIDTH,
-                isBlackKey and CONSTANTS.BLACK_KEY_HEIGHT_OFFSET or 0,
-                0
-            ) + Vector3.new(octave * 14 * CONSTANTS.KEY_WIDTH, 0, 0)
-            
-            local key = PianoSpawner.createPianoKey(
-                keyName .. (octave > 0 and octave or ""),
-                keyPosition,
-                isBlackKey
-            )
-            
-            key.Parent = pianoModel
-        end
-    end
-    
-    pianoModel.Parent = Workspace
-    State.spawnedPiano = pianoModel
-    
-    return true
-end
-
--- ============================================================================
--- PIANO DETECTION
+-- PIANO DETECTION - 改善版
 -- ============================================================================
 
 local PianoDetector = {}
+
+function PianoDetector.isBlueColor(color)
+    -- 青系の色を検出（B成分が最も高い）
+    return color.B > 0.4 and color.B > color.R and color.B > color.G
+end
+
+function PianoDetector.findAllPianos()
+    local pianos = {}
+    local checkedModels = {}
+    
+    print("[Libra Heart] Searching for pianos...")
+    
+    Utils.safeCall(function()
+        -- Workspaceの全Modelを検索
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            if obj:IsA("Model") and not checkedModels[obj] then
+                checkedModels[obj] = true
+                
+                local hasBlueKeys = false
+                local keyCount = 0
+                
+                -- Modelの中に青いパーツがあるか確認
+                for _, child in ipairs(obj:GetDescendants()) do
+                    if child:IsA("BasePart") then
+                        local name = child.Name
+                        
+                        -- キー名をチェック
+                        for _, keyName in ipairs(CONSTANTS.KEY_NAMES) do
+                            if name == keyName or name:match("^" .. keyName .. "%d*$") then
+                                if PianoDetector.isBlueColor(child.Color) then
+                                    hasBlueKeys = true
+                                    keyCount = keyCount + 1
+                                end
+                                break
+                            end
+                        end
+                    end
+                end
+                
+                -- 少なくとも5つの青いキーがあればピアノと判定
+                if hasBlueKeys and keyCount >= 5 then
+                    print("[Libra Heart] Found piano:", obj.Name, "with", keyCount, "keys")
+                    table.insert(pianos, obj)
+                end
+            end
+        end
+    end)
+    
+    print("[Libra Heart] Total pianos found:", #pianos)
+    return pianos
+end
 
 function PianoDetector.getPianoKeys(pianoModel)
     local keys = {}
@@ -359,12 +276,17 @@ function PianoDetector.getPianoKeys(pianoModel)
     Utils.safeCall(function()
         for _, obj in ipairs(pianoModel:GetDescendants()) do
             if obj:IsA("BasePart") then
-                local keyName = obj.Name
+                local name = obj.Name
                 
-                for _, baseName in ipairs(CONSTANTS.KEY_NAMES) do
-                    if keyName == baseName or keyName:match("^" .. baseName .. "%d*$") then
-                        if not keys[baseName] then
-                            keys[baseName] = obj
+                -- キー名にマッチするか確認
+                for _, keyName in ipairs(CONSTANTS.KEY_NAMES) do
+                    if name == keyName or name:match("^" .. keyName .. "%d*$") then
+                        -- 青い色かチェック
+                        if PianoDetector.isBlueColor(obj.Color) then
+                            if not keys[keyName] then
+                                keys[keyName] = obj
+                                print("[Libra Heart] Found key:", keyName, "Color:", obj.Color)
+                            end
                         end
                         break
                     end
@@ -373,19 +295,41 @@ function PianoDetector.getPianoKeys(pianoModel)
         end
     end)
     
+    local keyCount = 0
+    for _ in pairs(keys) do keyCount = keyCount + 1 end
+    print("[Libra Heart] Total keys found:", keyCount)
+    
     return keys
 end
 
--- ============================================================================
--- CONTINUE TO PART 2...
--- ============================================================================
-
-print("[Libra Heart] Part 1/2 loaded. Load Part 2 to continue...")
---[[
-    Auto Piano Player - Part 2/2
-    このコードはPart 1の続きです
-    Part 1を先に実行してください
-]]
+function PianoDetector.findClosestPiano(pianos)
+    if #pianos == 0 then return nil end
+    if #pianos == 1 then return pianos[1] end
+    
+    if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then
+        return pianos[1]
+    end
+    
+    local playerPos = LocalPlayer.Character.PrimaryPart.Position
+    local closestPiano = nil
+    local closestDist = math.huge
+    
+    for _, piano in ipairs(pianos) do
+        local success, pianoPos = Utils.safeCall(function()
+            return piano:GetModelCFrame().Position
+        end)
+        
+        if success and pianoPos then
+            local dist = (pianoPos - playerPos).Magnitude
+            if dist < closestDist then
+                closestDist = dist
+                closestPiano = piano
+            end
+        end
+    end
+    
+    return closestPiano or pianos[1]
+end
 
 -- ============================================================================
 -- PIANO INTERACTION
@@ -400,6 +344,7 @@ function PianoPlayer.clickPianoKey(keyPart)
     
     local success = false
     
+    -- ClickDetector
     Utils.safeCall(function()
         local clickDetector = keyPart:FindFirstChildOfClass("ClickDetector")
         if clickDetector then
@@ -410,6 +355,7 @@ function PianoPlayer.clickPianoKey(keyPart)
     
     if success then return true end
     
+    -- ProximityPrompt
     Utils.safeCall(function()
         local proximityPrompt = keyPart:FindFirstChildOfClass("ProximityPrompt")
         if proximityPrompt then
@@ -434,9 +380,8 @@ function PianoPlayer.positionCameraAtPiano(pianoModel, keyPart)
         end
         
         if targetPos then
-            local offset = CONSTANTS.CAMERA_OFFSET
             Camera.CameraType = Enum.CameraType.Scriptable
-            Camera.CFrame = CFrame.new(targetPos + offset, targetPos)
+            Camera.CFrame = CFrame.new(targetPos + CONSTANTS.CAMERA_OFFSET, targetPos)
         end
     end)
 end
@@ -522,30 +467,42 @@ function PlaybackController.start()
     State.autoPlayThread = task.spawn(function()
         State.isPlaying = true
         
-        if not State.spawnedPiano or not State.spawnedPiano.Parent then
-            NotificationManager.show("error", "No Piano", 
-                "Please spawn a piano first!")
+        local pianos = PianoDetector.findAllPianos()
+        
+        if #pianos == 0 then
+            NotificationManager.show("error", "ピアノが見つかりません", 
+                "おもちゃメニューから青いピアノをスポーンしてください！", 
+                CONSTANTS.NOTIFICATION_DURATION_LONG)
             PlaybackController.stop()
             Utils.releaseMutex()
             return
         end
         
-        State.currentPianoModel = State.spawnedPiano
+        State.currentPianoModel = PianoDetector.findClosestPiano(pianos)
+        
+        if not State.currentPianoModel then
+            NotificationManager.show("error", "Piano Selection Failed", 
+                "ピアノを選択できませんでした")
+            PlaybackController.stop()
+            Utils.releaseMutex()
+            return
+        end
+        
         State.pianoKeys = PianoDetector.getPianoKeys(State.currentPianoModel)
         
         local keyCount = 0
         for _ in pairs(State.pianoKeys) do keyCount = keyCount + 1 end
         
         if keyCount == 0 then
-            NotificationManager.show("error", "No Keys Found", 
-                "Piano has no detectable keys!")
+            NotificationManager.show("error", "キーが見つかりません", 
+                "ピアノに青いキーが検出されませんでした")
             PlaybackController.stop()
             Utils.releaseMutex()
             return
         end
         
         NotificationManager.show("success", "Libra Heart", 
-            string.format("Found %d keys! Starting playback...", keyCount))
+            string.format("%d個のキーを検出！演奏開始...", keyCount))
         
         if Settings.teleportToPiano then
             PianoPlayer.teleportToPiano(State.currentPianoModel)
@@ -602,75 +559,28 @@ end
 -- ============================================================================
 
 local function createGUI()
-    if not Rayfield then
-        error("[Libra Heart] Cannot create GUI: Rayfield not loaded")
-        return nil
-    end
-    
     local Window = Rayfield:CreateWindow({
-        Name = "🎹 Libra Heart - Auto Piano v3.0",
-        LoadingTitle = "Libra Heart Loading...",
-        LoadingSubtitle = "by imaizumiyui | Auto Spawn Edition",
+        Name = "🎹 Libra Heart - Auto Piano v3.1",
+        LoadingTitle = "Libra Heart 読み込み中...",
+        LoadingSubtitle = "by imaizumiyui | 既存ピアノ対応",
         ConfigurationSaving = {
             Enabled = true,
             FolderName = "LibraHeartPianoConfig",
             FileName = "PianoSettings"
         },
-        Discord = {
-            Enabled = false
-        },
+        Discord = {Enabled = false},
         KeySystem = false
     })
     
     local MainTab = Window:CreateTab("🎵 Libra Heart", CONSTANTS.RAYFIELD_IMAGE)
-    local SpawnTab = Window:CreateTab("🎹 Piano Spawner", CONSTANTS.RAYFIELD_IMAGE)
-    local SettingsTab = Window:CreateTab("⚙️ Settings", CONSTANTS.RAYFIELD_IMAGE)
-    local InfoTab = Window:CreateTab("ℹ️ Info", CONSTANTS.RAYFIELD_IMAGE)
-    
-    -- Spawn Tab
-    SpawnTab:CreateSection("🎹 Piano Management")
-    
-    SpawnTab:CreateButton({
-        Name = "🎹 Spawn Blue Piano",
-        Callback = function()
-            local success = PianoSpawner.spawnPiano()
-            if success then
-                NotificationManager.show("success", "Piano Spawned!", 
-                    "Blue piano created in front of you!")
-            else
-                NotificationManager.show("error", "Spawn Failed", 
-                    "Could not spawn piano")
-            end
-        end
-    })
-    
-    SpawnTab:CreateButton({
-        Name = "🗑️ Remove Piano",
-        Callback = function()
-            if State.spawnedPiano then
-                State.spawnedPiano:Destroy()
-                State.spawnedPiano = nil
-                NotificationManager.show("info", "Piano Removed", 
-                    "Piano has been deleted")
-            else
-                NotificationManager.show("warning", "No Piano", 
-                    "No spawned piano to remove")
-            end
-        end
-    })
-    
-    SpawnTab:CreateSection("ℹ️ Instructions")
-    
-    SpawnTab:CreateParagraph({
-        Title = "How to Use",
-        Content = "1. Click 'Spawn Blue Piano' button\n2. Piano will appear in front of you\n3. Go to Main tab and toggle 'Play Libra Heart'\n4. Enjoy the music!"
-    })
+    local SettingsTab = Window:CreateTab("⚙️ 設定", CONSTANTS.RAYFIELD_IMAGE)
+    local InfoTab = Window:CreateTab("ℹ️ 情報", CONSTANTS.RAYFIELD_IMAGE)
     
     -- Main Tab
-    MainTab:CreateSection("Playback Control")
+    MainTab:CreateSection("🎹 再生コントロール")
     
     MainTab:CreateToggle({
-        Name = "🎹 Play Libra Heart",
+        Name = "🎹 Libra Heart を演奏",
         CurrentValue = false,
         Flag = "AutoPlayToggle",
         Callback = function(Value)
@@ -679,19 +589,19 @@ local function createGUI()
                 PlaybackController.start()
             else
                 PlaybackController.stop()
-                NotificationManager.show("info", "Stopped", 
-                    "Playback stopped", CONSTANTS.NOTIFICATION_DURATION_SHORT)
+                NotificationManager.show("info", "停止", 
+                    "演奏を停止しました", CONSTANTS.NOTIFICATION_DURATION_SHORT)
             end
         end
     })
     
-    MainTab:CreateLabel("Song: Libra Heart by imaizumiyui")
-    MainTab:CreateLabel("Complete melody with auto-spawn!")
+    MainTab:CreateLabel("曲: Libra Heart by imaizumiyui")
+    MainTab:CreateLabel("完全版メロディー")
     
-    MainTab:CreateSection("Camera Settings")
+    MainTab:CreateSection("📹 カメラ設定")
     
     MainTab:CreateToggle({
-        Name = "📹 Auto Camera Follow",
+        Name = "📹 自動カメラ追従",
         CurrentValue = true,
         Flag = "AutoFocusToggle",
         Callback = function(Value)
@@ -703,7 +613,7 @@ local function createGUI()
     })
     
     MainTab:CreateToggle({
-        Name = "🚀 Teleport to Piano",
+        Name = "🚀 ピアノへテレポート",
         CurrentValue = false,
         Flag = "TeleportToggle",
         Callback = function(Value)
@@ -711,11 +621,33 @@ local function createGUI()
         end
     })
     
+    MainTab:CreateSection("🔍 手動操作")
+    
+    MainTab:CreateButton({
+        Name = "🔍 ピアノを検索",
+        Callback = function()
+            local pianos = PianoDetector.findAllPianos()
+            
+            if #pianos > 0 then
+                local testKeys = PianoDetector.getPianoKeys(pianos[1])
+                local keyCount = 0
+                for _ in pairs(testKeys) do keyCount = keyCount + 1 end
+                
+                NotificationManager.show("success", "ピアノ発見！", 
+                    string.format("%d台のピアノ、%d個のキーを検出", #pianos, keyCount))
+            else
+                NotificationManager.show("error", "ピアノなし", 
+                    "おもちゃメニューから青いピアノをスポーンしてください", 
+                    CONSTANTS.NOTIFICATION_DURATION_LONG)
+            end
+        end
+    })
+    
     -- Settings Tab
-    SettingsTab:CreateSection("Timing Settings")
+    SettingsTab:CreateSection("⏱️ タイミング設定")
     
     SettingsTab:CreateSlider({
-        Name = "Play Speed",
+        Name = "再生速度",
         Range = {CONSTANTS.MIN_PLAY_SPEED, CONSTANTS.MAX_PLAY_SPEED},
         Increment = 0.1,
         Suffix = "x",
@@ -727,10 +659,10 @@ local function createGUI()
     })
     
     SettingsTab:CreateSlider({
-        Name = "Click Delay",
+        Name = "クリック遅延",
         Range = {0.01, 0.3},
         Increment = 0.01,
-        Suffix = "s",
+        Suffix = "秒",
         CurrentValue = CONSTANTS.DEFAULT_CLICK_DELAY,
         Flag = "ClickDelaySlider",
         Callback = function(Value)
@@ -739,10 +671,10 @@ local function createGUI()
     })
     
     SettingsTab:CreateSlider({
-        Name = "Note Gap",
+        Name = "音符間隔",
         Range = {0.01, 0.5},
         Increment = 0.01,
-        Suffix = "s",
+        Suffix = "秒",
         CurrentValue = CONSTANTS.DEFAULT_NOTE_GAP,
         Flag = "NoteGapSlider",
         Callback = function(Value)
@@ -751,10 +683,10 @@ local function createGUI()
     })
     
     SettingsTab:CreateSlider({
-        Name = "Loop Delay",
+        Name = "ループ遅延",
         Range = {1, 20},
         Increment = 1,
-        Suffix = "s",
+        Suffix = "秒",
         CurrentValue = CONSTANTS.DEFAULT_LOOP_DELAY,
         Flag = "LoopDelaySlider",
         Callback = function(Value)
@@ -763,26 +695,31 @@ local function createGUI()
     })
     
     -- Info Tab
-    InfoTab:CreateSection("🎵 Song Information")
+    InfoTab:CreateSection("🎵 曲情報")
     
     InfoTab:CreateParagraph({
         Title = "Libra Heart",
-        Content = "Artist: imaizumiyui\nKey: C#m\n\nComplete melody includes:\n• Intro\n• Verse A\n• Chorus\n• Bridge\n• Outro"
+        Content = "アーティスト: imaizumiyui\nキー: C#m\n\n含まれるパート:\n• イントロ\n• Verse A\n• コーラス\n• ブリッジ\n• アウトロ"
     })
     
-    InfoTab:CreateSection("📖 How to Use")
+    InfoTab:CreateSection("📖 使い方")
     
     InfoTab:CreateParagraph({
-        Title = "Quick Start",
-        Content = "1. Go to 'Piano Spawner' tab\n2. Click 'Spawn Blue Piano'\n3. Return to 'Libra Heart' tab\n4. Toggle 'Play Libra Heart' ON\n5. Enjoy the music!"
+        Title = "ステップ1: ピアノをスポーン",
+        Content = "Fling Things and Peopleの「おもちゃ」メニューから青いピアノをスポーンしてください"
     })
     
-    InfoTab:CreateSection("ℹ️ Version Info")
+    InfoTab:CreateParagraph({
+        Title = "ステップ2: 演奏開始",
+        Content = "「Libra Heartを演奏」トグルをONにして、音楽を楽しんでください！"
+    })
     
-    InfoTab:CreateLabel("Libra Heart Auto Piano v3.0")
-    InfoTab:CreateLabel("✓ Auto piano spawning")
-    InfoTab:CreateLabel("✓ No manual piano needed")
-    InfoTab:CreateLabel("✓ Complete automation")
+    InfoTab:CreateSection("ℹ️ バージョン情報")
+    
+    InfoTab:CreateLabel("Libra Heart Auto Piano v3.1")
+    InfoTab:CreateLabel("✓ 既存の青いピアノに対応")
+    InfoTab:CreateLabel("✓ 改善された検出機能")
+    InfoTab:CreateLabel("✓ おもちゃメニューから使用")
     InfoTab:CreateLabel("✓ Rayfield UI")
     
     return Window
@@ -793,35 +730,27 @@ end
 -- ============================================================================
 
 local function initialize()
-    print("[Libra Heart] Starting initialization...")
-    
-    if not Rayfield then
-        error("[Libra Heart] Critical: Rayfield not available")
-        return false
-    end
+    print("[Libra Heart] 初期化開始...")
     
     State.originalCameraType = Camera.CameraType
     
     local success, result = Utils.safeCall(createGUI)
     
     if not success then
-        warn("[Libra Heart] Failed to create GUI:", result)
+        warn("[Libra Heart] GUI作成失敗:", result)
         return false
     end
     
-    NotificationManager.show("success", "Libra Heart v3.0", 
-        "Ready! Go to Piano Spawner tab!", 
+    NotificationManager.show("success", "Libra Heart v3.1", 
+        "準備完了！おもちゃメニューから青いピアノをスポーンしてください", 
         CONSTANTS.NOTIFICATION_DURATION_LONG)
     
     Utils.registerCleanup(function()
         PlaybackController.stop()
         PianoPlayer.restoreCamera()
-        if State.spawnedPiano then
-            State.spawnedPiano:Destroy()
-        end
     end)
     
-    print("[Libra Heart] Initialization complete!")
+    print("[Libra Heart] 初期化完了！")
     return true
 end
 
@@ -831,91 +760,32 @@ end
 
 local function main()
     print("=" .. string.rep("=", 78))
-    print("  Libra Heart Auto Piano Player v3.0")
+    print("  Libra Heart Auto Piano Player v3.1")
     print("  Song: Libra Heart by imaizumiyui")
-    print("  NEW: Auto Spawn Piano!")
+    print("  おもちゃメニューの青いピアノに対応")
     print("=" .. string.rep("=", 78))
     
     if not RayfieldLoadSuccess or not Rayfield then
-        error("[Libra Heart] Cannot continue: Rayfield UI library failed to load")
+        error("[Libra Heart] Rayfield UI読み込み失敗")
         return
     end
     
-    local success, error = Utils.safeCall(function()
-        local initSuccess = initialize()
-        if not initSuccess then
-            error("Initialization failed")
-        end
+    local success = Utils.safeCall(function()
+        return initialize()
     end)
     
     if not success then
-        warn("[Libra Heart] Fatal error during initialization:", error)
-        NotificationManager.show("error", "Initialization Failed", 
-            "Script failed to start. Check console for details.")
+        warn("[Libra Heart] 初期化エラー")
+        NotificationManager.show("error", "初期化失敗", 
+            "スクリプトの起動に失敗しました")
         return
     end
     
-    print("[Libra Heart] Ready! Spawn a piano to begin!")
+    print("[Libra Heart] 準備完了！")
     print("=" .. string.rep("=", 78))
 end
 
--- ============================================================================
--- GRACEFUL SHUTDOWN
--- ============================================================================
+-- Execute
+pcall(main)
 
-game:GetService("Players").LocalPlayer.OnTeleport:Connect(function()
-    print("[Libra Heart] Teleport detected, cleaning up...")
-    PlaybackController.stop()
-    Utils.cleanup()
-end)
-
--- ============================================================================
--- EXECUTE MAIN
--- ============================================================================
-
-local mainSuccess, mainError = pcall(main)
-
-if not mainSuccess then
-    warn("[Libra Heart] Critical error:", mainError)
-    
-    if Rayfield then
-        pcall(function()
-            Rayfield:Notify({
-                Title = "❌ Critical Error",
-                Content = "Script failed to load. Check console (F9).",
-                Duration = 10,
-                Image = CONSTANTS.RAYFIELD_IMAGE
-            })
-        end)
-    end
-end
-
-print("[Libra Heart] Part 2/2 loaded successfully!")
-
---[[
-    ============================================================================
-    VERSION 3.0.0 - AUTO SPAWN CHANGELOG
-    ============================================================================
-    
-    [NEW FEATURES]
-    ✅ Automatic blue piano spawning
-    ✅ "Piano Spawner" tab in UI
-    ✅ Spawn/Remove piano buttons
-    ✅ No need to find existing pianos
-    ✅ Piano spawns in front of player
-    
-    [IMPROVEMENTS]
-    ✅ Simplified workflow
-    ✅ Guaranteed compatibility
-    ✅ No detection issues
-    ✅ Cleaner UI layout
-    
-    [USAGE]
-    1. Go to "Piano Spawner" tab
-    2. Click "Spawn Blue Piano"
-    3. Go to "Libra Heart" tab
-    4. Toggle "Play Libra Heart" ON
-    5. Enjoy!
-    
-    ============================================================================
-]]
+print("[Libra Heart] スクリプト読み込み完了！")
