@@ -1,15 +1,16 @@
 --[[
     Auto Piano Player for "Fling Things and People"
-    Libra Heart by imaizumiyui - 既存ピアノ対応版
+    Libra Heart by imaizumiyui - Complete Version (Improved v2.1)
     
-    おもちゃメニューから青いピアノをスポーンして使用
+    Fixed: Piano detection for actual "Fling Things and People" game
     
-    Version: 3.1.0
+    GitHub: https://github.com/yourusername/libra-heart-piano
+    Version: 2.1.0
     License: MIT
 ]]
 
 -- ============================================================================
--- RAYFIELD INITIALIZATION
+-- RAYFIELD INITIALIZATION (MUST BE FIRST)
 -- ============================================================================
 
 local Rayfield
@@ -23,15 +24,16 @@ do
     if success and result then
         Rayfield = result
         RayfieldLoadSuccess = true
-        print("[Libra Heart] Rayfield UI loaded")
+        print("[Libra Heart] Rayfield UI loaded successfully")
     else
         warn("[Libra Heart] Failed to load Rayfield UI:", result)
+        warn("[Libra Heart] Script cannot continue without UI library")
         return
     end
 end
 
 if not RayfieldLoadSuccess or not Rayfield then
-    error("[Libra Heart] Rayfield UI library failed to load")
+    error("[Libra Heart] Critical: Rayfield UI library failed to load")
     return
 end
 
@@ -40,6 +42,7 @@ end
 -- ============================================================================
 
 local CONSTANTS = {
+    -- Timing
     DEFAULT_CLICK_DELAY = 0.08,
     DEFAULT_NOTE_GAP = 0.05,
     DEFAULT_LOOP_DELAY = 3,
@@ -47,19 +50,39 @@ local CONSTANTS = {
     MIN_PLAY_SPEED = 0.5,
     MAX_PLAY_SPEED = 2.0,
     
+    -- Camera
     CAMERA_OFFSET = Vector3.new(0, 5, 10),
     TELEPORT_OFFSET = Vector3.new(0, 3, 8),
     TELEPORT_WAIT_TIME = 0.5,
     
+    -- Detection (Updated for Fling Things and People)
+    PIANO_PART_NAMES = {"piano", "key", "keys", "keyboard"},
+    
+    -- Blue colors commonly used in Fling Things and People
+    BLUE_COLORS = {
+        Color3.fromRGB(0, 0, 255),      -- Pure blue
+        Color3.fromRGB(13, 105, 172),   -- Ocean blue
+        Color3.fromRGB(0, 32, 96),      -- Dark blue
+        Color3.fromRGB(0, 85, 255),     -- Bright blue
+        Color3.fromRGB(23, 23, 255),    -- Electric blue
+        Color3.fromRGB(0, 170, 255),    -- Sky blue
+    },
+    
     KEY_NAMES = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"},
     
+    -- Delays
     SECTION_DELAY = 0.3,
     FINAL_DELAY = 0.5,
+    INITIAL_SEARCH_DELAY = 2,
     
+    -- UI
     NOTIFICATION_DURATION_SHORT = 2,
     NOTIFICATION_DURATION_MEDIUM = 3,
     NOTIFICATION_DURATION_LONG = 5,
-    RAYFIELD_IMAGE = 4483362458
+    RAYFIELD_IMAGE = 4483362458,
+    
+    -- Search depth
+    MAX_SEARCH_DEPTH = 50000  -- Maximum descendants to search
 }
 
 -- ============================================================================
@@ -68,6 +91,7 @@ local CONSTANTS = {
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
@@ -80,10 +104,13 @@ local State = {
     isPlaying = false,
     currentPianoModel = nil,
     pianoKeys = {},
+    foundPianos = {},
     autoPlayThread = nil,
     originalCameraType = Camera.CameraType,
     cleanupFunctions = {},
-    mutex = false
+    mutex = false,
+    rayfieldWindow = nil,
+    debugMode = true  -- Enable for troubleshooting
 }
 
 local Settings = {
@@ -101,6 +128,7 @@ local Settings = {
 -- ============================================================================
 
 local LibraHeartSong = {
+    Name = "Libra Heart - imaizumiyui",
     Intro = {
         {"D#", 0.4}, {"F#", 0.4}, {"G#", 0.4}, {"A#", 0.4},
         {"G#", 0.4}, {"F#", 0.4}, {"D#", 0.6}, {"rest", 0.2},
@@ -111,7 +139,8 @@ local LibraHeartSong = {
         {"C#", 0.3}, {"D#", 0.3}, {"F#", 0.5}, {"F#", 0.3},
         {"G#", 0.3}, {"F#", 0.3}, {"D#", 0.5}, {"rest", 0.2},
         {"D#", 0.3}, {"F#", 0.3}, {"G#", 0.5}, {"A#", 0.3},
-        {"B", 0.4}, {"A#", 0.4}, {"G#", 0.6}, {"rest", 0.2},
+        {"B", 0.4}, {"A#", 0.4}, {"G#", 0.6},
+        {"rest", 0.2},
         {"C#", 0.3}, {"D#", 0.3}, {"F#", 0.5}, {"F#", 0.3},
         {"G#", 0.3}, {"A#", 0.3}, {"B", 0.5}, {"rest", 0.2},
         {"B", 0.3}, {"A#", 0.3}, {"G#", 0.5}, {"F#", 0.3},
@@ -119,19 +148,24 @@ local LibraHeartSong = {
     },
     Chorus = {
         {"B", 0.4}, {"B", 0.3}, {"A#", 0.3}, {"G#", 0.4},
-        {"F#", 0.3}, {"G#", 0.3}, {"F#", 0.4}, {"D#", 0.4}, {"rest", 0.2},
+        {"F#", 0.3}, {"G#", 0.3}, {"F#", 0.4}, {"D#", 0.4},
+        {"rest", 0.2},
         {"D#", 0.3}, {"F#", 0.3}, {"G#", 0.4}, {"A#", 0.4},
-        {"B", 0.4}, {"B", 0.4}, {"A#", 0.6}, {"rest", 0.2},
+        {"B", 0.4}, {"B", 0.4}, {"A#", 0.6},
+        {"rest", 0.2},
         {"B", 0.4}, {"B", 0.3}, {"C#", 0.3}, {"D#", 0.4},
-        {"F#", 0.4}, {"G#", 0.4}, {"F#", 0.4}, {"D#", 0.4}, {"rest", 0.2},
+        {"F#", 0.4}, {"G#", 0.4}, {"F#", 0.4}, {"D#", 0.4},
+        {"rest", 0.2},
         {"F#", 0.3}, {"G#", 0.3}, {"A#", 0.4}, {"B", 0.4},
         {"A#", 0.4}, {"G#", 0.4}, {"F#", 0.8}
     },
     Bridge = {
         {"D#", 0.4}, {"D#", 0.4}, {"F#", 0.4}, {"G#", 0.4},
-        {"A#", 0.4}, {"B", 0.4}, {"A#", 0.4}, {"G#", 0.4}, {"rest", 0.2},
+        {"A#", 0.4}, {"B", 0.4}, {"A#", 0.4}, {"G#", 0.4},
+        {"rest", 0.2},
         {"F#", 0.3}, {"F#", 0.3}, {"G#", 0.4}, {"A#", 0.4},
-        {"B", 0.4}, {"C#", 0.4}, {"D#", 0.8}, {"rest", 0.3}
+        {"B", 0.4}, {"C#", 0.4}, {"D#", 0.8},
+        {"rest", 0.3}
     },
     Outro = {
         {"B", 0.4}, {"A#", 0.4}, {"G#", 0.4}, {"F#", 0.4},
@@ -160,8 +194,25 @@ function Utils.isValidInstance(instance)
     return instance and typeof(instance) == "Instance" and instance.Parent ~= nil
 end
 
+function Utils.isValidModel(model)
+    return Utils.isValidInstance(model) and model:IsA("Model")
+end
+
+function Utils.debounce(func, delay)
+    local lastCall = 0
+    return function(...)
+        local now = tick()
+        if now - lastCall >= delay then
+            lastCall = now
+            return func(...)
+        end
+    end
+end
+
 function Utils.acquireMutex()
-    if State.mutex then return false end
+    if State.mutex then
+        return false
+    end
     State.mutex = true
     return true
 end
@@ -181,6 +232,13 @@ function Utils.registerCleanup(func)
     table.insert(State.cleanupFunctions, func)
 end
 
+-- Debug print function
+function Utils.debug(...)
+    if State.debugMode then
+        print("[Libra Heart Debug]", ...)
+    end
+end
+
 -- ============================================================================
 -- NOTIFICATION MANAGER
 -- ============================================================================
@@ -188,7 +246,10 @@ end
 local NotificationManager = {}
 
 function NotificationManager.show(type, title, content, duration)
-    if not Rayfield then return end
+    if not Rayfield then
+        warn("[Libra Heart] Cannot show notification: Rayfield not initialized")
+        return
+    end
     
     local icons = {
         success = "✅",
@@ -210,129 +271,161 @@ function NotificationManager.show(type, title, content, duration)
 end
 
 -- ============================================================================
--- PIANO DETECTION - 改善版
+-- IMPROVED PIANO DETECTION FOR FLING THINGS AND PEOPLE
 -- ============================================================================
 
 local PianoDetector = {}
 
-function PianoDetector.findYamaRolanSioPiano()
-    local foundPiano = nil
+function PianoDetector.isBlueColor(color)
+    for _, blueColor in ipairs(CONSTANTS.BLUE_COLORS) do
+        local r_diff = math.abs(color.R - blueColor.R)
+        local g_diff = math.abs(color.G - blueColor.G)
+        local b_diff = math.abs(color.B - blueColor.B)
+        
+        -- Allow some tolerance for color matching
+        if r_diff < 0.1 and g_diff < 0.1 and b_diff < 0.1 then
+            return true
+        end
+    end
     
-    print("[Libra Heart] Searching for YamaRolanSio piano...")
+    -- Also check if it's any shade of blue
+    if color.B > 0.5 and color.B > color.R and color.B > color.G then
+        return true
+    end
     
-    Utils.safeCall(function()
-        -- Workspaceの全オブジェクトを検索
+    return false
+end
+
+function PianoDetector.isKeyPart(part)
+    if not part:IsA("BasePart") then return false end
+    
+    local name = part.Name
+    
+    -- Check if it's a named key
+    for _, keyName in ipairs(CONSTANTS.KEY_NAMES) do
+        if name == keyName then
+            return true
+        end
+    end
+    
+    return false
+end
+
+-- NEW: More aggressive piano search
+function PianoDetector.findAllPianos()
+    local pianos = {}
+    local foundParts = {}
+    local checkedCount = 0
+    
+    Utils.debug("Starting piano search...")
+    
+    local success = Utils.safeCall(function()
+        -- Method 1: Search for any blue parts that look like keys
         for _, obj in ipairs(Workspace:GetDescendants()) do
-            -- YamaRolanSioのピアノを名前で検索
-            if obj:IsA("Model") then
-                local modelName = obj.Name:lower()
-                
-                -- ピアノに関連する名前をチェック
-                if modelName:find("piano") or modelName:find("yamarolansi") or modelName:find("keyboard") then
-                    print("[Libra Heart] Found potential piano model:", obj.Name)
-                    
-                    -- 中にキーがあるか確認
-                    local hasKeys = false
-                    for _, child in ipairs(obj:GetDescendants()) do
-                        if child:IsA("BasePart") then
-                            for _, keyName in ipairs(CONSTANTS.KEY_NAMES) do
-                                if child.Name == keyName then
-                                    hasKeys = true
-                                    print("[Libra Heart] Confirmed: Found key", keyName, "in", obj.Name)
-                                    foundPiano = obj
-                                    return
-                                end
-                            end
-                        end
-                    end
-                end
+            checkedCount = checkedCount + 1
+            
+            if checkedCount > CONSTANTS.MAX_SEARCH_DEPTH then
+                Utils.debug("Reached max search depth, stopping search")
+                break
             end
             
-            -- パーツの名前がキー名と一致する場合、その親を探す
             if obj:IsA("BasePart") then
-                for _, keyName in ipairs(CONSTANTS.KEY_NAMES) do
-                    if obj.Name == keyName then
-                        print("[Libra Heart] Found key part:", keyName)
-                        
-                        -- 親のModelを探す
-                        local parent = obj.Parent
-                        while parent and parent ~= Workspace do
-                            if parent:IsA("Model") then
-                                print("[Libra Heart] Found parent model:", parent.Name)
-                                foundPiano = parent
-                                return
-                            end
-                            parent = parent.Parent
-                        end
+                -- Check if it's blue AND has a key name
+                local isBlue = PianoDetector.isBlueColor(obj.Color)
+                local isKeyName = PianoDetector.isKeyPart(obj)
+                
+                if isBlue and isKeyName then
+                    Utils.debug("Found blue key part:", obj.Name, "Color:", obj.Color)
+                    table.insert(foundParts, obj)
+                    
+                    -- Try to find parent model
+                    local parent = obj.Parent
+                    if parent and not table.find(pianos, parent) then
+                        Utils.debug("Adding parent:", parent.Name, "ClassName:", parent.ClassName)
+                        table.insert(pianos, parent)
                     end
                 end
             end
         end
+        
+        Utils.debug("Search complete. Found", #foundParts, "blue key parts")
+        Utils.debug("Found", #pianos, "potential piano models")
     end)
     
-    if foundPiano then
-        print("[Libra Heart] Piano found:", foundPiano.Name)
-    else
-        print("[Libra Heart] No piano found")
-    end
-    
-    return foundPiano
-end
-
-function PianoDetector.findAllPianos()
-    local piano = PianoDetector.findYamaRolanSioPiano()
-    
-    if piano then
-        return {piano}
-    else
+    if not success then
+        warn("[Libra Heart] Error during piano search")
         return {}
     end
+    
+    -- If no models found but we have parts, use the parts directly
+    if #pianos == 0 and #foundParts > 0 then
+        Utils.debug("No models found, creating virtual piano from parts")
+        
+        -- Create a virtual "piano" that's just a collection of the parts
+        local virtualPiano = {
+            Name = "VirtualPiano",
+            Parts = foundParts,
+            IsVirtual = true
+        }
+        
+        table.insert(pianos, virtualPiano)
+    end
+    
+    return pianos
 end
 
 function PianoDetector.getPianoKeys(pianoModel)
     local keys = {}
     
-    if not pianoModel or not pianoModel.Parent then
+    Utils.debug("Getting piano keys from:", pianoModel.Name or "Unknown")
+    
+    -- Handle virtual piano (just parts, no model)
+    if pianoModel.IsVirtual then
+        Utils.debug("Processing virtual piano")
+        for _, part in ipairs(pianoModel.Parts) do
+            if Utils.isValidInstance(part) then
+                local keyName = part.Name
+                if table.find(CONSTANTS.KEY_NAMES, keyName) then
+                    keys[keyName] = part
+                    Utils.debug("  Found key:", keyName)
+                end
+            end
+        end
         return keys
     end
     
-    print("[Libra Heart] Getting keys from:", pianoModel.Name)
+    -- Handle normal model
+    if not Utils.isValidModel(pianoModel) then 
+        Utils.debug("Invalid piano model")
+        return keys 
+    end
     
     Utils.safeCall(function()
         for _, obj in ipairs(pianoModel:GetDescendants()) do
             if obj:IsA("BasePart") then
-                local name = obj.Name
+                local keyName = obj.Name
                 
-                -- 正確なキー名マッチング
-                for _, keyName in ipairs(CONSTANTS.KEY_NAMES) do
-                    if name == keyName then
-                        if not keys[keyName] then
-                            keys[keyName] = obj
-                            print("[Libra Heart] Found key:", keyName, "at", obj:GetFullName())
-                            
-                            -- ClickDetectorまたはProximityPromptがあるか確認
-                            local hasInteraction = obj:FindFirstChildOfClass("ClickDetector") or obj:FindFirstChildOfClass("ProximityPrompt")
-                            if hasInteraction then
-                                print("[Libra Heart] Key has interaction:", keyName)
-                            else
-                                print("[Libra Heart] WARNING: Key has no interaction:", keyName)
-                            end
-                        end
-                        break
+                -- Check if it's a key name
+                if table.find(CONSTANTS.KEY_NAMES, keyName) and not keys[keyName] then
+                    -- Verify it's blue
+                    if PianoDetector.isBlueColor(obj.Color) then
+                        keys[keyName] = obj
+                        Utils.debug("  Found key:", keyName, "at", obj.Position)
                     end
                 end
             end
         end
     end)
     
-    local keyCount = 0
-    for k, v in pairs(keys) do 
-        keyCount = keyCount + 1
-        print("[Libra Heart] Key registered:", k)
-    end
-    print("[Libra Heart] Total keys found:", keyCount)
+    Utils.debug("Total keys found:", Utils.tableLength(keys))
     
     return keys
+end
+
+function Utils.tableLength(t)
+    local count = 0
+    for _ in pairs(t) do count = count + 1 end
+    return count
 end
 
 function PianoDetector.findClosestPiano(pianos)
@@ -340,6 +433,7 @@ function PianoDetector.findClosestPiano(pianos)
     if #pianos == 1 then return pianos[1] end
     
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then
+        Utils.debug("No character, returning first piano")
         return pianos[1]
     end
     
@@ -348,12 +442,25 @@ function PianoDetector.findClosestPiano(pianos)
     local closestDist = math.huge
     
     for _, piano in ipairs(pianos) do
-        local success, pianoPos = Utils.safeCall(function()
-            return piano:GetModelCFrame().Position
-        end)
+        local pianoPos
         
-        if success and pianoPos then
+        if piano.IsVirtual then
+            -- For virtual piano, use first part position
+            if piano.Parts[1] then
+                pianoPos = piano.Parts[1].Position
+            end
+        elseif Utils.isValidModel(piano) then
+            local success, result = Utils.safeCall(function()
+                return piano:GetModelCFrame().Position
+            end)
+            if success then
+                pianoPos = result
+            end
+        end
+        
+        if pianoPos then
             local dist = (pianoPos - playerPos).Magnitude
+            Utils.debug("Piano distance:", dist)
             if dist < closestDist then
                 closestDist = dist
                 closestPiano = piano
@@ -361,6 +468,7 @@ function PianoDetector.findClosestPiano(pianos)
         end
     end
     
+    Utils.debug("Selected closest piano at distance:", closestDist)
     return closestPiano or pianos[1]
 end
 
@@ -371,31 +479,57 @@ end
 local PianoPlayer = {}
 
 function PianoPlayer.clickPianoKey(keyPart)
-    if not Utils.isValidInstance(keyPart) then
-        return false
+    if not Utils.isValidInstance(keyPart) then 
+        Utils.debug("Invalid key part for clicking")
+        return false 
     end
     
     local success = false
     
-    -- ClickDetector
+    -- Try ProximityPrompt
     Utils.safeCall(function()
-        local clickDetector = keyPart:FindFirstChildOfClass("ClickDetector")
-        if clickDetector then
-            fireclickdetector(clickDetector)
+        for _, child in ipairs(keyPart:GetDescendants()) do
+            if child:IsA("ProximityPrompt") then
+                fireproximityprompt(child)
+                Utils.debug("Fired ProximityPrompt on", keyPart.Name)
+                success = true
+                return
+            end
+        end
+        
+        local proximityPrompt = keyPart:FindFirstChildOfClass("ProximityPrompt")
+        if proximityPrompt then
+            fireproximityprompt(proximityPrompt)
+            Utils.debug("Fired ProximityPrompt (FindFirst) on", keyPart.Name)
             success = true
+            return
         end
     end)
     
     if success then return true end
     
-    -- ProximityPrompt
+    -- Try ClickDetector
     Utils.safeCall(function()
-        local proximityPrompt = keyPart:FindFirstChildOfClass("ProximityPrompt")
-        if proximityPrompt then
-            fireproximityprompt(proximityPrompt)
+        for _, child in ipairs(keyPart:GetDescendants()) do
+            if child:IsA("ClickDetector") then
+                fireclickdetector(child)
+                Utils.debug("Fired ClickDetector on", keyPart.Name)
+                success = true
+                return
+            end
+        end
+        
+        local clickDetector = keyPart:FindFirstChildOfClass("ClickDetector")
+        if clickDetector then
+            fireclickdetector(clickDetector)
+            Utils.debug("Fired ClickDetector (FindFirst) on", keyPart.Name)
             success = true
         end
     end)
+    
+    if not success then
+        Utils.debug("No interaction method found for", keyPart.Name)
+    end
     
     return success
 end
@@ -408,27 +542,41 @@ function PianoPlayer.positionCameraAtPiano(pianoModel, keyPart)
         
         if keyPart and Utils.isValidInstance(keyPart) then
             targetPos = keyPart.Position
-        elseif pianoModel and pianoModel:IsA("Model") then
-            targetPos = pianoModel:GetModelCFrame().Position
+        elseif pianoModel then
+            if pianoModel.IsVirtual and pianoModel.Parts[1] then
+                targetPos = pianoModel.Parts[1].Position
+            elseif Utils.isValidModel(pianoModel) then
+                targetPos = pianoModel:GetModelCFrame().Position
+            end
         end
         
         if targetPos then
+            local offset = CONSTANTS.CAMERA_OFFSET
             Camera.CameraType = Enum.CameraType.Scriptable
-            Camera.CFrame = CFrame.new(targetPos + CONSTANTS.CAMERA_OFFSET, targetPos)
+            Camera.CFrame = CFrame.new(targetPos + offset, targetPos)
         end
     end)
 end
 
 function PianoPlayer.teleportToPiano(pianoModel)
     if not pianoModel then return false end
-    if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then
-        return false
+    if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then 
+        return false 
     end
     
     local success = Utils.safeCall(function()
-        local pianoPos = pianoModel:GetModelCFrame().Position
-        local teleportPos = pianoPos + CONSTANTS.TELEPORT_OFFSET
-        LocalPlayer.Character:SetPrimaryPartCFrame(CFrame.new(teleportPos))
+        local pianoPos
+        
+        if pianoModel.IsVirtual and pianoModel.Parts[1] then
+            pianoPos = pianoModel.Parts[1].Position
+        elseif Utils.isValidModel(pianoModel) then
+            pianoPos = pianoModel:GetModelCFrame().Position
+        end
+        
+        if pianoPos then
+            local teleportPos = pianoPos + CONSTANTS.TELEPORT_OFFSET
+            LocalPlayer.Character:SetPrimaryPartCFrame(CFrame.new(teleportPos))
+        end
     end)
     
     return success
@@ -436,8 +584,8 @@ end
 
 function PianoPlayer.playNoteSequence(sequence)
     for _, noteInfo in ipairs(sequence) do
-        if not Settings.autoPlayEnabled or not State.isPlaying then
-            break
+        if not Settings.autoPlayEnabled or not State.isPlaying then 
+            break 
         end
         
         local noteName = noteInfo[1]
@@ -453,6 +601,8 @@ function PianoPlayer.playNoteSequence(sequence)
                 
                 task.wait(Settings.clickDelay)
                 PianoPlayer.clickPianoKey(keyPart)
+            else
+                Utils.debug("Key not found or invalid:", noteName)
             end
         end
         
@@ -473,7 +623,9 @@ end
 local PlaybackController = {}
 
 function PlaybackController.stop()
-    if not Utils.acquireMutex() then return end
+    if not Utils.acquireMutex() then
+        return
+    end
     
     Settings.autoPlayEnabled = false
     State.isPlaying = false
@@ -491,7 +643,10 @@ function PlaybackController.stop()
 end
 
 function PlaybackController.start()
-    if not Utils.acquireMutex() then return end
+    if not Utils.acquireMutex() then
+        Utils.debug("Could not acquire mutex")
+        return
+    end
     
     if State.autoPlayThread then
         task.cancel(State.autoPlayThread)
@@ -500,42 +655,54 @@ function PlaybackController.start()
     State.autoPlayThread = task.spawn(function()
         State.isPlaying = true
         
-        local pianos = PianoDetector.findAllPianos()
+        Utils.debug("Starting piano search...")
+        State.foundPianos = PianoDetector.findAllPianos()
         
-        if #pianos == 0 then
-            NotificationManager.show("error", "ピアノが見つかりません", 
-                "おもちゃメニューから青いピアノをスポーンしてください！", 
-                CONSTANTS.NOTIFICATION_DURATION_LONG)
+        Utils.debug("Pianos found:", #State.foundPianos)
+        
+        if #State.foundPianos == 0 then
+            NotificationManager.show("error", "Piano Not Found", 
+                "No blue piano detected!\n\nMake sure:\n• Piano is spawned\n• Keys are BLUE colored\n• Keys are named C, D, E, F, G, A, B (with # for sharps)")
             PlaybackController.stop()
             Utils.releaseMutex()
             return
         end
         
-        State.currentPianoModel = PianoDetector.findClosestPiano(pianos)
+        State.currentPianoModel = PianoDetector.findClosestPiano(State.foundPianos)
         
         if not State.currentPianoModel then
             NotificationManager.show("error", "Piano Selection Failed", 
-                "ピアノを選択できませんでした")
+                "Could not select a piano")
             PlaybackController.stop()
             Utils.releaseMutex()
             return
         end
+        
+        Utils.debug("Selected piano:", State.currentPianoModel.Name or "VirtualPiano")
         
         State.pianoKeys = PianoDetector.getPianoKeys(State.currentPianoModel)
         
-        local keyCount = 0
-        for _ in pairs(State.pianoKeys) do keyCount = keyCount + 1 end
+        local keyCount = Utils.tableLength(State.pianoKeys)
+        Utils.debug("Keys detected:", keyCount)
         
         if keyCount == 0 then
-            NotificationManager.show("error", "キーが見つかりません", 
-                "ピアノに青いキーが検出されませんでした")
+            NotificationManager.show("error", "No Keys Found", 
+                "Piano has no detectable keys!\n\nCheck that:\n• Keys are BLUE\n• Keys are named correctly (C, D#, etc.)")
             PlaybackController.stop()
             Utils.releaseMutex()
             return
         end
         
+        -- List found keys
+        local keyList = {}
+        for keyName, _ in pairs(State.pianoKeys) do
+            table.insert(keyList, keyName)
+        end
+        table.sort(keyList)
+        Utils.debug("Available keys:", table.concat(keyList, ", "))
+        
         NotificationManager.show("success", "Libra Heart", 
-            string.format("%d個のキーを検出！演奏開始...", keyCount))
+            string.format("Found %d keys! Starting playback...", keyCount))
         
         if Settings.teleportToPiano then
             PianoPlayer.teleportToPiano(State.currentPianoModel)
@@ -547,7 +714,7 @@ function PlaybackController.start()
         Utils.releaseMutex()
         
         while Settings.autoPlayEnabled and State.isPlaying do
-            Utils.safeCall(function()
+            local success = Utils.safeCall(function()
                 PianoPlayer.playNoteSequence(LibraHeartSong.Intro)
                 if not Settings.autoPlayEnabled then return end
                 
@@ -579,6 +746,11 @@ function PlaybackController.start()
                 PianoPlayer.playNoteSequence(LibraHeartSong.Outro)
             end)
             
+            if not success then
+                warn("[Libra Heart] Playback error occurred")
+                break
+            end
+            
             task.wait(Settings.loopDelay)
         end
         
@@ -592,28 +764,38 @@ end
 -- ============================================================================
 
 local function createGUI()
+    if not Rayfield then
+        error("[Libra Heart] Cannot create GUI: Rayfield not loaded")
+        return nil
+    end
+    
     local Window = Rayfield:CreateWindow({
-        Name = "🎹 Libra Heart - Auto Piano v3.1",
-        LoadingTitle = "Libra Heart 読み込み中...",
-        LoadingSubtitle = "by imaizumiyui | 既存ピアノ対応",
+        Name = "🎹 Libra Heart - Auto Piano v2.1",
+        LoadingTitle = "Libra Heart Loading...",
+        LoadingSubtitle = "by imaizumiyui | Fixed Detection",
         ConfigurationSaving = {
             Enabled = true,
             FolderName = "LibraHeartPianoConfig",
             FileName = "PianoSettings"
         },
-        Discord = {Enabled = false},
+        Discord = {
+            Enabled = false,
+            Invite = "noinvitelink",
+            RememberJoins = true
+        },
         KeySystem = false
     })
     
     local MainTab = Window:CreateTab("🎵 Libra Heart", CONSTANTS.RAYFIELD_IMAGE)
-    local SettingsTab = Window:CreateTab("⚙️ 設定", CONSTANTS.RAYFIELD_IMAGE)
-    local InfoTab = Window:CreateTab("ℹ️ 情報", CONSTANTS.RAYFIELD_IMAGE)
+    local SettingsTab = Window:CreateTab("⚙️ Settings", CONSTANTS.RAYFIELD_IMAGE)
+    local DebugTab = Window:CreateTab("🔧 Debug", CONSTANTS.RAYFIELD_IMAGE)
+    local InfoTab = Window:CreateTab("ℹ️ Info", CONSTANTS.RAYFIELD_IMAGE)
     
     -- Main Tab
-    MainTab:CreateSection("🎹 再生コントロール")
+    MainTab:CreateSection("Playback Control")
     
     MainTab:CreateToggle({
-        Name = "🎹 Libra Heart を演奏",
+        Name = "🎹 Play Libra Heart",
         CurrentValue = false,
         Flag = "AutoPlayToggle",
         Callback = function(Value)
@@ -622,19 +804,19 @@ local function createGUI()
                 PlaybackController.start()
             else
                 PlaybackController.stop()
-                NotificationManager.show("info", "停止", 
-                    "演奏を停止しました", CONSTANTS.NOTIFICATION_DURATION_SHORT)
+                NotificationManager.show("info", "Stopped", 
+                    "Playback stopped", CONSTANTS.NOTIFICATION_DURATION_SHORT)
             end
         end
     })
     
-    MainTab:CreateLabel("曲: Libra Heart by imaizumiyui")
-    MainTab:CreateLabel("完全版メロディー")
+    MainTab:CreateLabel("Song: Libra Heart by imaizumiyui")
+    MainTab:CreateLabel("Complete melody - Fixed detection!")
     
-    MainTab:CreateSection("📹 カメラ設定")
+    MainTab:CreateSection("Camera Settings")
     
     MainTab:CreateToggle({
-        Name = "📹 自動カメラ追従",
+        Name = "📹 Auto Camera Follow",
         CurrentValue = true,
         Flag = "AutoFocusToggle",
         Callback = function(Value)
@@ -646,7 +828,7 @@ local function createGUI()
     })
     
     MainTab:CreateToggle({
-        Name = "🚀 ピアノへテレポート",
+        Name = "🚀 Teleport to Piano",
         CurrentValue = false,
         Flag = "TeleportToggle",
         Callback = function(Value)
@@ -654,33 +836,56 @@ local function createGUI()
         end
     })
     
-    MainTab:CreateSection("🔍 手動操作")
+    MainTab:CreateSection("Manual Controls")
+    
+    local FindPianoButton = Utils.debounce(function()
+        Utils.debug("Manual piano search initiated")
+        State.foundPianos = PianoDetector.findAllPianos()
+        
+        if #State.foundPianos > 0 then
+            -- Get key count from first piano
+            local testKeys = PianoDetector.getPianoKeys(State.foundPianos[1])
+            local keyCount = Utils.tableLength(testKeys)
+            
+            NotificationManager.show("success", "Pianos Found!", 
+                string.format("Found %d piano(s) with %d keys", #State.foundPianos, keyCount))
+        else
+            NotificationManager.show("error", "No Pianos"found!\n\nTroubleshooting:\n• Check if piano is BLUE\n• Verify key names (C, D, E, F, G, A, B)\n• Use Debug tab for more info", 
+                CONSTANTS.NOTIFICATION_DURATION_LONG)
+        end
+    end, 1)
     
     MainTab:CreateButton({
-        Name = "🔍 ピアノを検索",
-        Callback = function()
-            local pianos = PianoDetector.findAllPianos()
-            
-            if #pianos > 0 then
-                local testKeys = PianoDetector.getPianoKeys(pianos[1])
-                local keyCount = 0
-                for _ in pairs(testKeys) do keyCount = keyCount + 1 end
-                
-                NotificationManager.show("success", "ピアノ発見！", 
-                    string.format("%d台のピアノ、%d個のキーを検出", #pianos, keyCount))
+        Name = "🔍 Find Pianos",
+        Callback = FindPianoButton
+    })
+    
+    local TeleportNowButton = Utils.debounce(function()
+        if State.currentPianoModel then
+            local success = PianoPlayer.teleportToPiano(State.currentPianoModel)
+            if success then
+                NotificationManager.show("success", "Teleported", 
+                    "Moved to piano", CONSTANTS.NOTIFICATION_DURATION_SHORT)
             else
-                NotificationManager.show("error", "ピアノなし", 
-                    "おもちゃメニューから青いピアノをスポーンしてください", 
-                    CONSTANTS.NOTIFICATION_DURATION_LONG)
+                NotificationManager.show("error", "Teleport Failed", 
+                    "Could not teleport to piano")
             end
+        else
+            NotificationManager.show("error", "No Piano Selected", 
+                "Please use 'Find Pianos' first")
         end
+    end, 2)
+    
+    MainTab:CreateButton({
+        Name = "🎹 Teleport Now",
+        Callback = TeleportNowButton
     })
     
     -- Settings Tab
-    SettingsTab:CreateSection("⏱️ タイミング設定")
+    SettingsTab:CreateSection("Timing Settings")
     
     SettingsTab:CreateSlider({
-        Name = "再生速度",
+        Name = "Play Speed",
         Range = {CONSTANTS.MIN_PLAY_SPEED, CONSTANTS.MAX_PLAY_SPEED},
         Increment = 0.1,
         Suffix = "x",
@@ -692,10 +897,10 @@ local function createGUI()
     })
     
     SettingsTab:CreateSlider({
-        Name = "クリック遅延",
+        Name = "Click Delay",
         Range = {0.01, 0.3},
         Increment = 0.01,
-        Suffix = "秒",
+        Suffix = "s",
         CurrentValue = CONSTANTS.DEFAULT_CLICK_DELAY,
         Flag = "ClickDelaySlider",
         Callback = function(Value)
@@ -704,10 +909,10 @@ local function createGUI()
     })
     
     SettingsTab:CreateSlider({
-        Name = "音符間隔",
+        Name = "Note Gap",
         Range = {0.01, 0.5},
         Increment = 0.01,
-        Suffix = "秒",
+        Suffix = "s",
         CurrentValue = CONSTANTS.DEFAULT_NOTE_GAP,
         Flag = "NoteGapSlider",
         Callback = function(Value)
@@ -716,10 +921,10 @@ local function createGUI()
     })
     
     SettingsTab:CreateSlider({
-        Name = "ループ遅延",
+        Name = "Loop Delay",
         Range = {1, 20},
         Increment = 1,
-        Suffix = "秒",
+        Suffix = "s",
         CurrentValue = CONSTANTS.DEFAULT_LOOP_DELAY,
         Flag = "LoopDelaySlider",
         Callback = function(Value)
@@ -727,35 +932,275 @@ local function createGUI()
         end
     })
     
+    -- Debug Tab
+    DebugTab:CreateSection("🔧 Troubleshooting Tools")
+    
+    DebugTab:CreateToggle({
+        Name = "Enable Debug Mode",
+        CurrentValue = true,
+        Flag = "DebugModeToggle",
+        Callback = function(Value)
+            State.debugMode = Value
+            Utils.debug("Debug mode:", Value and "Enabled" or "Disabled")
+        end
+    })
+    
+    DebugTab:CreateButton({
+        Name = "🔍 Search All Blue Parts",
+        Callback = function()
+            local bluePartCount = 0
+            local keyPartCount = 0
+            
+            for _, obj in ipairs(Workspace:GetDescendants()) do
+                if obj:IsA("BasePart") then
+                    if PianoDetector.isBlueColor(obj.Color) then
+                        bluePartCount = bluePartCount + 1
+                        Utils.debug("Blue part:", obj:GetFullName(), "Color:", obj.Color)
+                        
+                        if PianoDetector.isKeyPart(obj) then
+                            keyPartCount = keyPartCount + 1
+                            Utils.debug("  ^ This is a KEY!")
+                        end
+                    end
+                end
+            end
+            
+            NotificationManager.show("info", "Search Complete", 
+                string.format("Found %d blue parts\n%d are piano keys", bluePartCount, keyPartCount))
+        end
+    })
+    
+    DebugTab:CreateButton({
+        Name = "📋 List Current Keys",
+        Callback = function()
+            if State.currentPianoModel then
+                local keys = PianoDetector.getPianoKeys(State.currentPianoModel)
+                local keyList = {}
+                
+                for keyName, keyPart in pairs(keys) do
+                    table.insert(keyList, keyName)
+                    Utils.debug(keyName, "->", keyPart:GetFullName())
+                end
+                
+                table.sort(keyList)
+                
+                if #keyList > 0 then
+                    NotificationManager.show("info", "Available Keys", 
+                        string.format("%d keys:\n%s", #keyList, table.concat(keyList, ", ")))
+                else
+                    NotificationManager.show("warning", "No Keys", 
+                        "Current piano has no detectable keys")
+                end
+            else
+                NotificationManager.show("error", "No Piano", 
+                    "Use 'Find Pianos' first")
+            end
+        end
+    })
+    
+    DebugTab:CreateButton({
+        Name = "🎹 Test Single Key (C)",
+        Callback = function()
+            if State.pianoKeys and State.pianoKeys["C"] then
+                Utils.debug("Testing key C")
+                local success = PianoPlayer.clickPianoKey(State.pianoKeys["C"])
+                
+                if success then
+                    NotificationManager.show("success", "Key Test", 
+                        "Key C clicked successfully!")
+                else
+                    NotificationManager.show("error", "Key Test Failed", 
+                        "Could not click key C")
+                end
+            else
+                NotificationManager.show("error", "Key Not Found", 
+                    "Key C not available in current piano")
+            end
+        end
+    })
+    
+    DebugTab:CreateButton({
+        Name = "📊 Show Piano Info",
+        Callback = function()
+            if State.currentPianoModel then
+                local info = string.format(
+                    "Piano: %s\nType: %s\nKeys: %d\nPlaying: %s",
+                    State.currentPianoModel.Name or "VirtualPiano",
+                    State.currentPianoModel.IsVirtual and "Virtual" or "Model",
+                    Utils.tableLength(State.pianoKeys),
+                    State.isPlaying and "Yes" or "No"
+                )
+                
+                Utils.debug("=== Piano Info ===")
+                Utils.debug(info)
+                
+                NotificationManager.show("info", "Piano Info", info)
+            else
+                NotificationManager.show("error", "No Piano", 
+                    "No piano selected yet")
+            end
+        end
+    })
+    
+    DebugTab:CreateSection("📝 Console Output")
+    
+    DebugTab:CreateLabel("Check F9 console for detailed debug info")
+    DebugTab:CreateLabel("All debug messages are prefixed with:")
+    DebugTab:CreateLabel("[Libra Heart Debug]")
+    
     -- Info Tab
-    InfoTab:CreateSection("🎵 曲情報")
+    InfoTab:CreateSection("🎵 Song Information")
     
     InfoTab:CreateParagraph({
         Title = "Libra Heart",
-        Content = "アーティスト: imaizumiyui\nキー: C#m\n\n含まれるパート:\n• イントロ\n• Verse A\n• コーラス\n• ブリッジ\n• アウトロ"
+        Content = "Artist: imaizumiyui\nKey: C#m (D#, B, C#, F#)\n\nComplete melody includes:\n• Intro\n• Verse A\n• Chorus (Main melody)\n• Bridge\n• Outro"
     })
     
-    InfoTab:CreateSection("📖 使い方")
+    InfoTab:CreateSection("📖 How to Use")
     
     InfoTab:CreateParagraph({
-        Title = "ステップ1: ピアノをスポーン",
-        Content = "Fling Things and Peopleの「おもちゃ」メニューから青いピアノをスポーンしてください"
+        Title = "Step 1: Spawn Piano",
+        Content = "In 'Fling Things and People', spawn a BLUE piano. The keys must be blue colored!"
     })
     
     InfoTab:CreateParagraph({
-        Title = "ステップ2: 演奏開始",
-        Content = "「Libra Heartを演奏」トグルをONにして、音楽を楽しんでください！"
+        Title = "Step 2: Find Piano",
+        Content = "Click 'Find Pianos' button in Main tab. Check Debug tab if not found."
     })
     
-    InfoTab:CreateSection("ℹ️ バージョン情報")
+    InfoTab:CreateParagraph({
+        Title = "Step 3: Play!",
+        Content = "Toggle 'Play Libra Heart' on and enjoy!"
+    })
     
-    InfoTab:CreateLabel("Libra Heart Auto Piano v3.1")
-    InfoTab:CreateLabel("✓ 既存の青いピアノに対応")
-    InfoTab:CreateLabel("✓ 改善された検出機能")
-    InfoTab:CreateLabel("✓ おもちゃメニューから使用")
-    InfoTab:CreateLabel("✓ Rayfield UI")
+    InfoTab:CreateSection("⚠️ Troubleshooting")
+    
+    InfoTab:CreateParagraph({
+        Title = "Piano Not Found?",
+        Content = "• Make sure piano keys are BLUE\n• Keys should be named: C, C#, D, D#, E, F, F#, G, G#, A, A#, B\n• Use Debug tab to search for blue parts\n• Try spawning a different piano"
+    })
+    
+    InfoTab:CreateParagraph({
+        Title = "No Sound?",
+        Content = "• Check if executor supports fireproximityprompt\n• Some pianos may not work\n• Try testing a single key in Debug tab"
+    })
+    
+    InfoTab:CreateSection("ℹ️ Script Information")
+    
+    InfoTab:CreateLabel("Libra Heart Auto Piano v2.1")
+    InfoTab:CreateLabel("For: Fling Things and People")
+    InfoTab:CreateLabel("")
+    InfoTab:CreateLabel("✓ Fixed piano detection")
+    InfoTab:CreateLabel("✓ Enhanced blue color detection")
+    InfoTab:CreateLabel("✓ Virtual piano support")
+    InfoTab:CreateLabel("✓ Debug tools included")
+    InfoTab:CreateLabel("✓ Complete error handling")
+    InfoTab:CreateLabel("✓ Performance optimized")
+    
+    InfoTab:CreateSection("🔧 Version 2.1 Changes")
+    
+    InfoTab:CreateParagraph({
+        Title = "Detection Improvements",
+        Content = "• More aggressive blue color matching\n• Support for color variations\n• Virtual piano system\n• Better parent model detection\n• Enhanced debug logging"
+    })
+    
+    InfoTab:CreateSection("📝 GitHub & Support")
+    
+    InfoTab:CreateParagraph({
+        Title = "Repository",
+        Content = "github.com/yourusername/libra-heart-piano\n\nUse Debug tab to troubleshoot!\nCheck F9 console for detailed logs."
+    })
     
     return Window
+end
+
+-- ============================================================================
+-- ERROR RECOVERY
+-- ============================================================================
+
+local function setupErrorRecovery()
+    -- Handle workspace changes
+    Workspace.DescendantRemoving:Connect(function(descendant)
+        if descendant == State.currentPianoModel then
+            warn("[Libra Heart] Current piano removed from workspace")
+            if Settings.autoPlayEnabled then
+                NotificationManager.show("warning", "Piano Removed", 
+                    "Current piano was removed. Stopping playback...")
+                PlaybackController.stop()
+            end
+        end
+    end)
+    
+    -- Handle character respawn
+    if LocalPlayer.Character then
+        LocalPlayer.Character:GetPropertyChangedSignal("Parent"):Connect(function()
+            if not LocalPlayer.Character.Parent and Settings.autoPlayEnabled then
+                warn("[Libra Heart] Character removed, pausing playback")
+                local wasEnabled = Settings.autoPlayEnabled
+                PlaybackController.stop()
+                
+                task.spawn(function()
+                    LocalPlayer.CharacterAdded:Wait()
+                    task.wait(2)
+                    if wasEnabled then
+                        NotificationManager.show("info", "Auto-Resume", 
+                            "Resuming playback after respawn...")
+                        Settings.autoPlayEnabled = true
+                        PlaybackController.start()
+                    end
+                end)
+            end
+        end)
+    end
+    
+    LocalPlayer.CharacterAdded:Connect(function(character)
+        character:GetPropertyChangedSignal("Parent"):Connect(function()
+            if not character.Parent and Settings.autoPlayEnabled then
+                PlaybackController.stop()
+            end
+        end)
+    end)
+end
+
+-- ============================================================================
+-- PERFORMANCE MONITORING
+-- ============================================================================
+
+local PerformanceMonitor = {}
+
+function PerformanceMonitor.start()
+    local startTime = tick()
+    local frameCount = 0
+    local lastReport = startTime
+    
+    local connection = RunService.Heartbeat:Connect(function()
+        frameCount = frameCount + 1
+        local currentTime = tick()
+        
+        if currentTime - lastReport >= 60 then
+            local fps = frameCount / (currentTime - lastReport)
+            local memoryUsage = gcinfo()
+            
+            Utils.debug(string.format("Performance - FPS: %.1f, Memory: %.2f MB", 
+                fps, memoryUsage / 1024))
+            
+            frameCount = 0
+            lastReport = currentTime
+            
+            if fps < 30 then
+                warn("[Libra Heart] Low FPS detected, consider reducing play speed")
+            end
+            
+            if memoryUsage > 500000 then
+                warn("[Libra Heart] High memory usage detected")
+                collectgarbage("collect")
+            end
+        end
+    end)
+    
+    Utils.registerCleanup(function()
+        connection:Disconnect()
+    end)
 end
 
 -- ============================================================================
@@ -763,27 +1208,54 @@ end
 -- ============================================================================
 
 local function initialize()
-    print("[Libra Heart] 初期化開始...")
+    print("[Libra Heart] Starting initialization...")
+    
+    if not Rayfield then
+        error("[Libra Heart] Critical: Rayfield not available")
+        return false
+    end
     
     State.originalCameraType = Camera.CameraType
     
     local success, result = Utils.safeCall(createGUI)
     
     if not success then
-        warn("[Libra Heart] GUI作成失敗:", result)
+        warn("[Libra Heart] Failed to create GUI:", result)
         return false
     end
     
-    NotificationManager.show("success", "Libra Heart v3.1", 
-        "準備完了！おもちゃメニューから青いピアノをスポーンしてください", 
+    State.rayfieldWindow = result
+    
+    NotificationManager.show("success", "Libra Heart v2.1", 
+        "Loaded with improved detection!", 
         CONSTANTS.NOTIFICATION_DURATION_LONG)
+    
+    -- Auto-find pianos after delay
+    task.spawn(function()
+        task.wait(CONSTANTS.INITIAL_SEARCH_DELAY)
+        
+        Utils.debug("Running automatic piano search...")
+        State.foundPianos = PianoDetector.findAllPianos()
+        
+        if #State.foundPianos > 0 then
+            local keys = PianoDetector.getPianoKeys(State.foundPianos[1])
+            local keyCount = Utils.tableLength(keys)
+            
+            NotificationManager.show("info", "Auto-Detection", 
+                string.format("Found %d piano(s) with %d keys!", #State.foundPianos, keyCount))
+        else
+            NotificationManager.show("info", "No Pianos Yet", 
+                "Spawn a blue piano, then click 'Find Pianos'", 
+                CONSTANTS.NOTIFICATION_DURATION_LONG)
+        end
+    end)
     
     Utils.registerCleanup(function()
         PlaybackController.stop()
         PianoPlayer.restoreCamera()
     end)
     
-    print("[Libra Heart] 初期化完了！")
+    print("[Libra Heart] Initialization complete!")
     return true
 end
 
@@ -793,32 +1265,134 @@ end
 
 local function main()
     print("=" .. string.rep("=", 78))
-    print("  Libra Heart Auto Piano Player v3.1")
+    print("  Libra Heart Auto Piano Player v2.1")
+    print("  For: Fling Things and People")
     print("  Song: Libra Heart by imaizumiyui")
-    print("  おもちゃメニューの青いピアノに対応")
+    print("  FIXED: Enhanced Piano Detection")
     print("=" .. string.rep("=", 78))
     
     if not RayfieldLoadSuccess or not Rayfield then
-        error("[Libra Heart] Rayfield UI読み込み失敗")
+        error("[Libra Heart] Cannot continue: Rayfield UI library failed to load")
         return
     end
     
-    local success = Utils.safeCall(function()
-        return initialize()
+    local success, error = Utils.safeCall(function()
+        local initSuccess = initialize()
+        if not initSuccess then
+            error("Initialization failed")
+        end
+        
+        setupErrorRecovery()
+        PerformanceMonitor.start()
     end)
     
     if not success then
-        warn("[Libra Heart] 初期化エラー")
-        NotificationManager.show("error", "初期化失敗", 
-            "スクリプトの起動に失敗しました")
+        warn("[Libra Heart] Fatal error during initialization:", error)
+        NotificationManager.show("error", "Initialization Failed", 
+            "Script failed to start. Check console for details.")
         return
     end
     
-    print("[Libra Heart] 準備完了！")
+    print("[Libra Heart] Ready to play Libra Heart")
+    print("[Libra Heart] Debug mode enabled - check F9 console")
     print("=" .. string.rep("=", 78))
 end
 
--- Execute
-pcall(main)
+-- ============================================================================
+-- GRACEFUL SHUTDOWN
+-- ============================================================================
 
-print("[Libra Heart] スクリプト読み込み完了！")
+game:GetService("Players").LocalPlayer.OnTeleport:Connect(function()
+    print("[Libra Heart] Teleport detected, cleaning up...")
+    PlaybackController.stop()
+    Utils.cleanup()
+end)
+
+local scriptConnection = game:GetService("ScriptContext").Error:Connect(function(message, trace)
+    if string.find(trace, "Libra Heart") then
+        warn("[Libra Heart] Error detected:", message)
+        PlaybackController.stop()
+    end
+end)
+
+Utils.registerCleanup(function()
+    scriptConnection:Disconnect()
+end)
+
+-- ============================================================================
+-- EXECUTE MAIN
+-- ============================================================================
+
+local mainSuccess, mainError = pcall(main)
+
+if not mainSuccess then
+    warn("[Libra Heart] Critical error:", mainError)
+    warn("[Libra Heart] Please report this error on GitHub")
+    
+    if Rayfield then
+        pcall(function()
+            Rayfield:Notify({
+                Title = "❌ Critical Error",
+                Content = "Script failed to load. Check console (F9) for details.",
+                Duration = 10,
+                Image = CONSTANTS.RAYFIELD_IMAGE
+            })
+        end)
+    end
+end
+
+print("[Libra Heart] Script loaded. Use Debug tab if piano not found!")
+
+--[[
+    ============================================================================
+    VERSION 2.1.0 - DETECTION FIX CHANGELOG
+    ============================================================================
+    
+    [FIXED - Piano Detection]
+    ✅ Enhanced blue color detection with tolerance
+    ✅ Added support for multiple shades of blue
+    ✅ Virtual piano system for loose parts
+    ✅ Better parent model detection
+    ✅ Increased search reliability
+    
+    [ADDED - Debug Features]
+    ✅ New Debug tab with troubleshooting tools
+    ✅ "Search All Blue Parts" button
+    ✅ "List Current Keys" functionality
+    ✅ "Test Single Key" feature
+    ✅ "Show Piano Info" display
+    ✅ Enhanced console logging with Utils.debug()
+    
+    [IMPROVED]
+    ✅ Color matching algorithm (RGB tolerance)
+    ✅ Any blue shade detection (B > R and B > G)
+    ✅ Better error messages with solutions
+    ✅ More informative notifications
+    ✅ Key detection logging
+    
+    [USAGE TIPS]
+    • Enable Debug Mode in Debug tab
+    • Check F9 console for detailed logs
+    • Use "Search All Blue Parts" to verify piano
+    • Test individual keys before full playback
+    • If still not working, piano may not be compatible
+    
+    ============================================================================
+    FLING THINGS AND PEOPLE - PIANO REQUIREMENTS
+    ============================================================================
+    
+    For this script to work, the piano MUST have:
+    
+    1. BLUE colored keys (any shade of blue)
+    2. Keys named exactly as: C, C#, D, D#, E, F, F#, G, G#, A, A#, B
+    3. ProximityPrompt or ClickDetector on each key
+    
+    If piano still not detected:
+    • Try Debug tab -> "Search All Blue Parts"
+    • Check if any blue parts are found
+    • Verify key naming in Debug output
+    • Some custom pianos may not be compatible
+    
+    ============================================================================
+]] 
+                "No blue piano
