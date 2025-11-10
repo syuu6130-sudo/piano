@@ -1,6 +1,6 @@
--- Libra Heart Auto Piano (KRNL対応)
+-- Libra Heart Auto Piano (KRNL対応・簡易メロディ版)
 -- Roblox: Fling Things and People
--- 完全自動演奏スクリプト（青いピアノ）
+-- KRNLでそのまま貼り付けて実行可能
 
 local Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/AvanJoel/Rayfield/main/source.lua"))()
 local Players = game:GetService("Players")
@@ -14,13 +14,12 @@ local DISTANCE_BEHIND = 7
 local CAMERA_OFFSET = Vector3.new(0,3,0)
 local MOVE_TELEPORT = true
 
--- フル譜面（Libra Heart）
+-- 簡易メロディ譜面（10〜20秒程度）
 local song = {
     {part="C4", wait=0.4},{part="E4", wait=0.4},{part="G4", wait=0.6},{part="E4", wait=0.4},
     {part="C4", wait=0.4},{part="D4", wait=0.8},{part="F4", wait=0.4},{part="A4", wait=0.4},
     {part="C5", wait=0.6},{part="A4", wait=0.4},{part="F4", wait=0.4},{part="D4", wait=0.8},
-    {part="C4", wait=0.4},{part="E4", wait=0.4},{part="G4", wait=0.6},{part="E4", wait=0.4},
-    {part="C4", wait=0.4},{part="D4", wait=0.8} -- 続きは同様に追加
+    {part="C4", wait=0.4},{part="E4", wait=0.4},{part="G4", wait=0.6},{part="E4", wait=0.4}
 }
 
 -- 内部状態
@@ -147,4 +146,4 @@ end
 -- 初期化
 detectPiano()
 setupUI()
-print("Libra Heart Auto Piano (KRNL対応) ロード完了")
+print("Libra Heart Auto Piano (KRNL対応・簡易メロディ版) ロード完了")
